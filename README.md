@@ -29,9 +29,21 @@ Next, build, run, and enter a Docker container for development:
 make -C docker/ run && make -C docker/ exec
 ```
 
+Default Arch is riscv, if you want to run aarch64.
+
+```
+make -C docker/ ARCH=aarch64 run && make -C docker/ exec
+```
+
 Finally, inside the container, build and emulate a simple seL4-based system with a root task written
 in Rust:
 
 ```
 make run
+```
+
+default kernel is sel4, if you want to run with rel4
+
+```
+make KERNEL=rel4 run
 ```

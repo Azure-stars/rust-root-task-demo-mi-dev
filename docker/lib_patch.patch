@@ -1,0 +1,12 @@
+diff --git a/src/lib.rs b/src/lib.rs
+index a8f21e3..806e92b 100644
+--- a/src/lib.rs
++++ b/src/lib.rs
+@@ -9,7 +9,6 @@
+ #![allow(while_true)]
+ #![feature(alloc_error_handler)]
+ #![feature(panic_info_message)]
+-#![feature(stdsimd)]
+ #![feature(linkage)]
+ 
+ 

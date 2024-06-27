@@ -9,7 +9,12 @@ work_root := ..
 id := rust-root-task-demo
 image_tag := $(id)
 container_name := $(id)
-
+ARCH   ?= riscv64
+ifeq ($(ARCH), riscv64)
+TARGET := riscv64imac-unknown-none-elf
+else ifeq($(ARCH), aarch64)
+TARGET := aarch64-unknown-none
+endif
 uid := $(shell id -u)
 gid := $(shell id -g)
 
@@ -20,6 +25,7 @@ none:
 build:
 	docker build \
 		--build-arg UID=$(uid) --build-arg GID=$(gid) \
+		--build-arg ARCH=$(ARCH) --build-arg TARGET=$(TARGET) \
 		-t $(image_tag) .
 
 .PHONY: run

@@ -5,11 +5,27 @@
 #
 
 BUILD ?= build
+ARCH  ?= riscv64
+KERNEL?= sel4
+
+qemu_args := 
+ifeq ($(ARCH), riscv64)
+TARGET := riscv64imac-sel4
+qemu_args += -machine virt \
+		 		-smp 2 -m 4096
+else ifeq ($(ARCH), aarch64)
+TARGET := aarch64-sel4
+qemu_args += -machine virt,virtualization=on -cpu cortex-a57 \
+		 		-smp 2 -m 1024
+endif
 
 build_dir := $(BUILD)
 
+ifeq ($(KERNEL), sel4)
 sel4_prefix := $(SEL4_INSTALL_DIR)
-
+else ifeq ($(KERNEL), rel4)
+sel4_prefix := /opt/reL4
+endif
 # Kernel loader binary artifacts provided by Docker container:
 # - `sel4-kernel-loader`: The loader binary, which expects to have a payload appended later via
 #   binary patch.
@@ -39,7 +55,7 @@ $(app_intermediate):
 		cargo build \
 			-Z build-std=core,alloc,compiler_builtins \
 			-Z build-std-features=compiler-builtins-mem \
-			--target aarch64-sel4 \
+			--target $(TARGET) \
 			--target-dir $(abspath $(build_dir)/target) \
 			--out-dir $(build_dir) \
 			-p $(app_crate)
@@ -55,9 +71,8 @@ $(image): $(app) $(loader) $(loader_cli)
 		-o $@
 
 qemu_cmd := \
-	qemu-system-aarch64 \
-		-machine virt,virtualization=on \
-		-cpu cortex-a57 -smp 2 -m 1024 \
+	qemu-system-$(ARCH) \
+		$(qemu_args) \
 		-nographic -serial mon:stdio \
 		-kernel $(image)
 
