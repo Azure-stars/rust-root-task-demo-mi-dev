@@ -89,7 +89,8 @@ RUN set -eux; \
     cd seL4_c_impl; \
     git checkout 552f173d3d7780b33184ebedefc58329ea5de3ba;
 
-# Build rel4 kernel
+# Build rel4 kernel. Just for riscv64 temporarily
+COPY kernel-settings-riscv64.cmake .
 RUN set -eux; \
     cd rel4_kernel;\
     rustup target add riscv64imac-unknown-none-elf; \
@@ -99,7 +100,7 @@ RUN set -eux; \
         -DCROSS_COMPILER_PREFIX=riscv64-linux-gnu- \
         -DCMAKE_INSTALL_PREFIX=/opt/reL4 \
         -DKernelPlatform=spike \
-        -C ../kernel-settings.cmake \
+        -C ../kernel-settings-riscv64.cmake \
         -G Ninja \
         -S . \
         -B build; \
