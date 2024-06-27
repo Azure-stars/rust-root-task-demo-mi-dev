@@ -16,7 +16,7 @@ RUN apt-get update -q && apt-get install -y --no-install-recommends \
 #         bash -s -- -y --no-modify-path --default-toolchain none
 RUN curl -sSf https://sh.rustup.rs | \
         bash -s -- -y --no-modify-path \
-            --default-toolchain nightly-2024-05-01 \
+            --default-toolchain nightly-2024-02-01 \
             --component rust-src
 
 ENV PATH=/root/.cargo/bin:$PATH
@@ -53,11 +53,9 @@ RUN set -eux; \
     ninja -C build install;
 
 RUN set -eux; \
-    export RUSTUP_TOOLCHAIN=nightly-2024-02-01; \
-    rustup component add rust-src; \
-    url="https://github.com/seL4/rust-sel4"; \
-    rev="cbfc9fffd4f9b9163fed42ac824ee4086c80d40f"; \
-    remote_options="--git $url --rev $rev"; \
+    url="https://github.com/rel4team/rust-sel4"; \
+    branch="mi_dev"; \
+    remote_options="--git $url --branch $branch"; \
     CC=${ARCH}-linux-gnu-gcc \
     SEL4_PREFIX=$SEL4_INSTALL_DIR \
         cargo install \
@@ -74,20 +72,14 @@ RUN set -eux; \
 
 
 # Clone rel4 kernel
-COPY lib_patch.patch .
 RUN set -eux; \
     git clone \
-        https://github.com/rel4team/rel4_kernel.git \
-        --config advice.detachedHead=false; \
-    cd rel4_kernel; \
-    git checkout cf2cbf43ff6bbebd2a4390ec1ca9c1fa98085ba9; \
-    git apply ../lib_patch.patch;
+        https://github.com/rel4team/rel4_kernel.git -b mi_dev \
+        --config advice.detachedHead=false;
 RUN set -eux; \
     git clone \
         https://github.com/rel4team/seL4_c_impl.git \
-        --config advice.detachedHead=false; \
-    cd seL4_c_impl; \
-    git checkout 552f173d3d7780b33184ebedefc58329ea5de3ba;
+        --config advice.detachedHead=false -b mi_dev;
 
 # Build rel4 kernel. Just for riscv64 temporarily
 COPY kernel-settings-riscv64.cmake .

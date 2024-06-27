@@ -12,5 +12,5 @@ edition = "2021"
 license = "BSD-2-Clause"
 
 [dependencies]
-sel4 = { git = "https://github.com/seL4/rust-sel4", rev = "cbfc9fffd4f9b9163fed42ac824ee4086c80d40f"}
-sel4-root-task = { git = "https://github.com/seL4/rust-sel4", rev = "cbfc9fffd4f9b9163fed42ac824ee4086c80d40f"}
+sel4 = { git = "https://github.com/rel4team/rust-sel4", branch = "mi_dev" }
+sel4-root-task = { git = "https://github.com/rel4team/rust-sel4", branch = "mi_dev" }
