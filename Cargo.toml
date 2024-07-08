@@ -11,3 +11,7 @@ resolver = "2"
 members = [
     "crates/example",
 ]
+
+[patch."https://github.com/rel4team/rust-sel4"]
+sel4 = { path = "../rust-sel4/crates/sel4" }
+sel4-root-task = { path = "../rust-sel4/crates/sel4-root-task" }

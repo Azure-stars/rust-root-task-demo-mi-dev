@@ -24,7 +24,7 @@ build_dir := $(BUILD)
 ifeq ($(KERNEL), sel4)
 sel4_prefix := $(SEL4_INSTALL_DIR)
 else ifeq ($(KERNEL), rel4)
-sel4_prefix := /opt/reL4
+sel4_prefix ?= $(shell pwd)/../install/
 endif
 # Kernel loader binary artifacts provided by Docker container:
 # - `sel4-kernel-loader`: The loader binary, which expects to have a payload appended later via
@@ -51,6 +51,7 @@ $(app): $(app_intermediate)
 # configuration and libsel4 headers.
 .INTERMDIATE: $(app_intermediate)
 $(app_intermediate):
+	echo "$(abspath $(sel4_prefix))"
 	SEL4_PREFIX=$(sel4_prefix) \
 		cargo build \
 			-Z build-std=core,alloc,compiler_builtins \
@@ -74,11 +75,19 @@ qemu_cmd := \
 	qemu-system-$(ARCH) \
 		$(qemu_args) \
 		-nographic -serial mon:stdio \
-		-kernel $(image)
+		-kernel $(image) \
+		-D qemu.log -d in_asm,int,pcall,cpu_reset,guest_errors
 
 .PHONY: run
 run: $(image)
 	$(qemu_cmd)
+
+.PHONY: debug
+debug: $(image)
+	@tmux new-session -d \
+	"$(qemu_cmd) -s -S && echo '按任意键继续' && read -n 1" && \
+	tmux split-window -h "gdb-multiarch $(image) -ex 'target remote localhost:1234' -ex 'disp /16i $pc' " && \
+	tmux -2 attach-session -d
 
 .PHONY: test
 test: test.py $(image)

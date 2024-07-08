@@ -52,24 +52,62 @@ RUN set -eux; \
     ninja -C build all; \
     ninja -C build install;
 
+# RUN set -eux; \
+#     url="https://github.com/rel4team/rust-sel4"; \
+#     branch="mi_dev"; \
+#     remote_options="--git $url --branch $branch"; \
+#     CC=${ARCH}-linux-gnu-gcc \
+#     SEL4_PREFIX=$SEL4_INSTALL_DIR \
+#         cargo install \
+#             -Z build-std=core,alloc,compiler_builtins \
+#             -Z build-std-features=compiler-builtins-mem \
+#             --target ${TARGET} \
+#             --root . \
+#             $remote_options \
+#             sel4-kernel-loader; \
+#     cargo install \
+#         --root . \
+#         $remote_options \
+#         sel4-kernel-loader-add-payload;
 RUN set -eux; \
-    url="https://github.com/rel4team/rust-sel4"; \
-    branch="mi_dev"; \
-    remote_options="--git $url --branch $branch"; \
+    git clone https://github.com/rel4team/rust-sel4 -b mi_dev; \
+    cd rust-sel4; \
     CC=${ARCH}-linux-gnu-gcc \
     SEL4_PREFIX=$SEL4_INSTALL_DIR \
         cargo install \
             -Z build-std=core,alloc,compiler_builtins \
             -Z build-std-features=compiler-builtins-mem \
             --target ${TARGET} \
-            --root . \
-            $remote_options \
+            --root .. \
+            --path ./crates/sel4-kernel-loader \
             sel4-kernel-loader; \
     cargo install \
-        --root . \
-        $remote_options \
+        --root .. \
+        --path ./crates/sel4-kernel-loader/add-payload \
         sel4-kernel-loader-add-payload;
 
+# RUN cat /deps/seL4/install/support/platform_gen.yaml
+# COPY diff.patch diff.patch
+# RUN set -eux; \
+#     url="https://github.com/rel4team/rust-sel4"; \
+#     rev="9f6aaccd903426509039e8d3dbe97dc1afc36d2b"; \
+#     git clone $url; \
+#     cd rust-sel4; \
+#     git reset --hard $rev; \
+#     git apply ../diff.patch; \
+#     CC=${ARCH}-linux-gnu-gcc \
+#     SEL4_PREFIX=$SEL4_INSTALL_DIR \
+#         cargo install \
+#             -Z build-std=core,alloc,compiler_builtins \
+#             -Z build-std-features=compiler-builtins-mem \
+#             --target ${TARGET} \
+#             --root .. \
+#             --path ./crates/sel4-kernel-loader \
+#             sel4-kernel-loader; \
+#     cargo install \
+#         --root .. \
+#         --path ./crates/sel4-kernel-loader/add-payload \
+#         sel4-kernel-loader-add-payload;
 
 # Clone rel4 kernel
 RUN set -eux; \
@@ -110,9 +148,14 @@ USER x
 
 # This time, for the non-root user
 RUN curl -sSf https://sh.rustup.rs | \
-        bash -s -- -y --no-modify-path --default-toolchain none
+        bash -s -- -y --no-modify-path \ 
+            --default-toolchain nightly-2024-02-01 \
+            --component rust-src cargo clippy rust-docs rust-src rust-std rustc rustfmt \
+            --target aarch64-unknown-none-softfloat riscv64imac-unknown-none-elf
 
 ENV PATH=/home/x/.cargo/bin:$PATH
 ENV ARCH=${ARCH}
+
+RUN sudo apt-get update && sudo apt-get install -y gdb-multiarch tmux
 
 WORKDIR /work
