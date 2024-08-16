@@ -5,7 +5,7 @@
 #
 
 BUILD ?= build
-ARCH  ?= riscv64
+ARCH  ?= aarch64
 KERNEL?= sel4
 
 qemu_args := 
@@ -30,7 +30,7 @@ endif
 # - `sel4-kernel-loader`: The loader binary, which expects to have a payload appended later via
 #   binary patch.
 # - `sel4-kernel-loader-add-payload`: CLI which appends a payload to the loader.
-loader_artifacts_dir := /deps/bin
+loader_artifacts_dir := ./bin
 loader := $(loader_artifacts_dir)/sel4-kernel-loader
 loader_cli := $(loader_artifacts_dir)/sel4-kernel-loader-add-payload
 
@@ -79,6 +79,7 @@ qemu_cmd := \
 .PHONY: run
 run: $(image)
 	$(qemu_cmd)
+	rm $(image)
 
 .PHONY: test
 test: test.py $(image)

@@ -1,0 +1,5 @@
+{
+    "rust-analyzer.check.allTargets": false,
+    "rust-analyzer.check.extraArgs": [],
+    "rust-analyzer.procMacro.enable": true
+}

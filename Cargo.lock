@@ -140,7 +140,10 @@ name = "example"
 version = "0.1.0"
 dependencies = [
  "sel4",
+ "sel4-initialize-tls-on-stack",
+ "sel4-logging",
  "sel4-root-task",
+ "spin",
 ]
 
 [[package]]
@@ -406,7 +409,7 @@ checksum = "94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49"
 [[package]]
 name = "sel4"
 version = "0.1.0"
-source = "git+https://github.com/rel4team/rust-sel4?branch=mi_dev#cbfc9fffd4f9b9163fed42ac824ee4086c80d40f"
+source = "git+https://github.com/rel4team/rust-sel4?branch=mi_dev#286630459e062a8b438ed3994a20c3d27b451cc1"
 dependencies = [
  "cfg-if",
  "sel4-config",
@@ -416,12 +419,12 @@ dependencies = [
 [[package]]
 name = "sel4-bitfield-ops"
 version = "0.1.0"
-source = "git+https://github.com/rel4team/rust-sel4?branch=mi_dev#cbfc9fffd4f9b9163fed42ac824ee4086c80d40f"
+source = "git+https://github.com/rel4team/rust-sel4?branch=mi_dev#286630459e062a8b438ed3994a20c3d27b451cc1"
 
 [[package]]
 name = "sel4-bitfield-parser"
 version = "0.1.0"
-source = "git+https://github.com/rel4team/rust-sel4?branch=mi_dev#cbfc9fffd4f9b9163fed42ac824ee4086c80d40f"
+source = "git+https://github.com/rel4team/rust-sel4?branch=mi_dev#286630459e062a8b438ed3994a20c3d27b451cc1"
 dependencies = [
  "pest",
  "pest_derive",
@@ -431,12 +434,12 @@ dependencies = [
 [[package]]
 name = "sel4-build-env"
 version = "0.1.0"
-source = "git+https://github.com/rel4team/rust-sel4?branch=mi_dev#cbfc9fffd4f9b9163fed42ac824ee4086c80d40f"
+source = "git+https://github.com/rel4team/rust-sel4?branch=mi_dev#286630459e062a8b438ed3994a20c3d27b451cc1"
 
 [[package]]
 name = "sel4-config"
 version = "0.1.0"
-source = "git+https://github.com/rel4team/rust-sel4?branch=mi_dev#cbfc9fffd4f9b9163fed42ac824ee4086c80d40f"
+source = "git+https://github.com/rel4team/rust-sel4?branch=mi_dev#286630459e062a8b438ed3994a20c3d27b451cc1"
 dependencies = [
  "sel4-config-macros",
 ]
@@ -444,7 +447,7 @@ dependencies = [
 [[package]]
 name = "sel4-config-data"
 version = "0.1.0"
-source = "git+https://github.com/rel4team/rust-sel4?branch=mi_dev#cbfc9fffd4f9b9163fed42ac824ee4086c80d40f"
+source = "git+https://github.com/rel4team/rust-sel4?branch=mi_dev#286630459e062a8b438ed3994a20c3d27b451cc1"
 dependencies = [
  "lazy_static",
  "sel4-build-env",
@@ -455,7 +458,7 @@ dependencies = [
 [[package]]
 name = "sel4-config-generic-macro-impls"
 version = "0.1.0"
-source = "git+https://github.com/rel4team/rust-sel4?branch=mi_dev#cbfc9fffd4f9b9163fed42ac824ee4086c80d40f"
+source = "git+https://github.com/rel4team/rust-sel4?branch=mi_dev#286630459e062a8b438ed3994a20c3d27b451cc1"
 dependencies = [
  "fallible-iterator",
  "proc-macro2",
@@ -467,7 +470,7 @@ dependencies = [
 [[package]]
 name = "sel4-config-generic-types"
 version = "0.1.0"
-source = "git+https://github.com/rel4team/rust-sel4?branch=mi_dev#cbfc9fffd4f9b9163fed42ac824ee4086c80d40f"
+source = "git+https://github.com/rel4team/rust-sel4?branch=mi_dev#286630459e062a8b438ed3994a20c3d27b451cc1"
 dependencies = [
  "serde",
 ]
@@ -475,7 +478,7 @@ dependencies = [
 [[package]]
 name = "sel4-config-macros"
 version = "0.1.0"
-source = "git+https://github.com/rel4team/rust-sel4?branch=mi_dev#cbfc9fffd4f9b9163fed42ac824ee4086c80d40f"
+source = "git+https://github.com/rel4team/rust-sel4?branch=mi_dev#286630459e062a8b438ed3994a20c3d27b451cc1"
 dependencies = [
  "sel4-config-data",
  "sel4-config-generic-macro-impls",
@@ -484,7 +487,7 @@ dependencies = [
 [[package]]
 name = "sel4-dlmalloc"
 version = "0.1.0"
-source = "git+https://github.com/rel4team/rust-sel4?branch=mi_dev#cbfc9fffd4f9b9163fed42ac824ee4086c80d40f"
+source = "git+https://github.com/rel4team/rust-sel4?branch=mi_dev#286630459e062a8b438ed3994a20c3d27b451cc1"
 dependencies = [
  "dlmalloc",
  "lock_api",
@@ -493,20 +496,28 @@ dependencies = [
 [[package]]
 name = "sel4-immediate-sync-once-cell"
 version = "0.1.0"
-source = "git+https://github.com/rel4team/rust-sel4?branch=mi_dev#cbfc9fffd4f9b9163fed42ac824ee4086c80d40f"
+source = "git+https://github.com/rel4team/rust-sel4?branch=mi_dev#286630459e062a8b438ed3994a20c3d27b451cc1"
 
 [[package]]
 name = "sel4-initialize-tls-on-stack"
 version = "0.1.0"
-source = "git+https://github.com/rel4team/rust-sel4?branch=mi_dev#cbfc9fffd4f9b9163fed42ac824ee4086c80d40f"
+source = "git+https://github.com/rel4team/rust-sel4?branch=mi_dev#286630459e062a8b438ed3994a20c3d27b451cc1"
 dependencies = [
  "cfg-if",
 ]
 
 [[package]]
+name = "sel4-logging"
+version = "0.1.0"
+source = "git+https://github.com/rel4team/rust-sel4?branch=mi_dev#286630459e062a8b438ed3994a20c3d27b451cc1"
+dependencies = [
+ "log",
+]
+
+[[package]]
 name = "sel4-panicking"
 version = "0.1.0"
-source = "git+https://github.com/rel4team/rust-sel4?branch=mi_dev#cbfc9fffd4f9b9163fed42ac824ee4086c80d40f"
+source = "git+https://github.com/rel4team/rust-sel4?branch=mi_dev#286630459e062a8b438ed3994a20c3d27b451cc1"
 dependencies = [
  "cfg-if",
  "sel4-immediate-sync-once-cell",
@@ -517,12 +528,12 @@ dependencies = [
 [[package]]
 name = "sel4-panicking-env"
 version = "0.1.0"
-source = "git+https://github.com/rel4team/rust-sel4?branch=mi_dev#cbfc9fffd4f9b9163fed42ac824ee4086c80d40f"
+source = "git+https://github.com/rel4team/rust-sel4?branch=mi_dev#286630459e062a8b438ed3994a20c3d27b451cc1"
 
 [[package]]
 name = "sel4-root-task"
 version = "0.1.0"
-source = "git+https://github.com/rel4team/rust-sel4?branch=mi_dev#cbfc9fffd4f9b9163fed42ac824ee4086c80d40f"
+source = "git+https://github.com/rel4team/rust-sel4?branch=mi_dev#286630459e062a8b438ed3994a20c3d27b451cc1"
 dependencies = [
  "sel4",
  "sel4-dlmalloc",
@@ -537,7 +548,7 @@ dependencies = [
 [[package]]
 name = "sel4-root-task-macros"
 version = "0.1.0"
-source = "git+https://github.com/rel4team/rust-sel4?branch=mi_dev#cbfc9fffd4f9b9163fed42ac824ee4086c80d40f"
+source = "git+https://github.com/rel4team/rust-sel4?branch=mi_dev#286630459e062a8b438ed3994a20c3d27b451cc1"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -547,7 +558,7 @@ dependencies = [
 [[package]]
 name = "sel4-runtime-common"
 version = "0.1.0"
-source = "git+https://github.com/rel4team/rust-sel4?branch=mi_dev#cbfc9fffd4f9b9163fed42ac824ee4086c80d40f"
+source = "git+https://github.com/rel4team/rust-sel4?branch=mi_dev#286630459e062a8b438ed3994a20c3d27b451cc1"
 dependencies = [
  "cfg-if",
  "sel4",
@@ -559,7 +570,7 @@ dependencies = [
 [[package]]
 name = "sel4-rustfmt-helper"
 version = "0.1.0"
-source = "git+https://github.com/rel4team/rust-sel4?branch=mi_dev#cbfc9fffd4f9b9163fed42ac824ee4086c80d40f"
+source = "git+https://github.com/rel4team/rust-sel4?branch=mi_dev#286630459e062a8b438ed3994a20c3d27b451cc1"
 dependencies = [
  "which",
 ]
@@ -567,7 +578,7 @@ dependencies = [
 [[package]]
 name = "sel4-sync"
 version = "0.1.0"
-source = "git+https://github.com/rel4team/rust-sel4?branch=mi_dev#cbfc9fffd4f9b9163fed42ac824ee4086c80d40f"
+source = "git+https://github.com/rel4team/rust-sel4?branch=mi_dev#286630459e062a8b438ed3994a20c3d27b451cc1"
 dependencies = [
  "lock_api",
  "sel4",
@@ -577,7 +588,7 @@ dependencies = [
 [[package]]
 name = "sel4-sys"
 version = "0.1.0"
-source = "git+https://github.com/rel4team/rust-sel4?branch=mi_dev#cbfc9fffd4f9b9163fed42ac824ee4086c80d40f"
+source = "git+https://github.com/rel4team/rust-sel4?branch=mi_dev#286630459e062a8b438ed3994a20c3d27b451cc1"
 dependencies = [
  "bindgen",
  "glob",
@@ -642,6 +653,15 @@ name = "shlex"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a7cee0529a6d40f580e7a5e6c495c8fbfe21b7b52795ed4bb5e62cdf92bc6380"
+
+[[package]]
+name = "spin"
+version = "0.9.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6980e8d7511241f8acf4aebddbb1ff938df5eebe98691418c4468d0b72a96a67"
+dependencies = [
+ "lock_api",
+]
 
 [[package]]
 name = "syn"
