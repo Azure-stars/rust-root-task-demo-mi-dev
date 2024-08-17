@@ -8,6 +8,4 @@
 
 resolver = "2"
 
-members = [
-    "crates/example",
-]
+members = ["crates/common", "crates/example", "crates/shim-comp"]

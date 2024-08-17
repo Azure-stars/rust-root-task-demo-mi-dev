@@ -7,8 +7,11 @@
 BUILD ?= build
 ARCH  ?= aarch64
 KERNEL?= sel4
-
+DEBUG ?= false
 qemu_args := 
+ifeq ($(DEBUG), true)
+qemu_args += -D qemu.log -d in_asm,int,pcall,cpu_reset,guest_errors
+endif
 ifeq ($(ARCH), riscv64)
 TARGET := riscv64imac-sel4
 qemu_args += -machine virt \
@@ -58,7 +61,16 @@ $(app_intermediate):
 			--target $(TARGET) \
 			--target-dir $(abspath $(build_dir)/target) \
 			--out-dir $(build_dir) \
+			-p shim-comp --release
+	SEL4_PREFIX=$(sel4_prefix) \
+		cargo build \
+			-Z build-std=core,alloc,compiler_builtins \
+			-Z build-std-features=compiler-builtins-mem \
+			--target $(TARGET) \
+			--target-dir $(abspath $(build_dir)/target) \
+			--out-dir $(build_dir) \
 			-p $(app_crate)
+	
 
 image := $(build_dir)/image.elf
 

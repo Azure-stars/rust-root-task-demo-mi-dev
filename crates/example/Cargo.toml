@@ -13,7 +13,11 @@ license = "BSD-2-Clause"
 
 [dependencies]
 sel4 = { git = "https://github.com/rel4team/rust-sel4", branch = "mi_dev" }
+sel4-sys = { git = "https://github.com/rel4team/rust-sel4", branch = "mi_dev" }
 sel4-root-task = { git = "https://github.com/rel4team/rust-sel4", branch = "mi_dev" }
 sel4-logging = { git = "https://github.com/rel4team/rust-sel4", branch = "mi_dev" }
 sel4-initialize-tls-on-stack = { git = "https://github.com/rel4team/rust-sel4", branch = "mi_dev" }
 spin = { version = "0.9.8" }
+buddy_system_allocator = "0.10.0"
+xmas-elf = "0.9.1"
+common = { path = "../common" }

@@ -4,7 +4,6 @@ use sel4::{InitCSpaceSlot, LocalCPtr, SizedFrameType};
 
 // use crate::heap::HEAP_MEM;
 
-
 pub struct UserImageUtils;
 
 static mut BOOT_INFO: usize = 0;
@@ -22,9 +21,7 @@ impl UserImageUtils {
     pub fn get_user_image_frame_slot(&self, vaddr: usize) -> InitCSpaceSlot {
         assert_eq!(vaddr % GRANULE_SIZE, 0);
         let user_image_footprint = get_user_image_footprint();
-        let bootinfo = unsafe {
-            &*(BOOT_INFO as *const sel4::BootInfo)
-        };
+        let bootinfo = unsafe { &*(BOOT_INFO as *const sel4::BootInfo) };
         let num_user_frames = bootinfo.user_image_frames().len();
         assert_eq!(user_image_footprint.len(), num_user_frames * GRANULE_SIZE);
         let ix = (vaddr - user_image_footprint.start) / GRANULE_SIZE;
@@ -50,11 +47,8 @@ impl UserImageUtils {
 
     #[inline]
     pub fn get_heap_vaddr(paddr: usize) -> usize {
-        unsafe {
-            paddr - HEAP_P_V_OFFSET
-        }
+        unsafe { paddr - HEAP_P_V_OFFSET }
     }
-
 }
 
 fn get_user_image_footprint() -> Range<usize> {
