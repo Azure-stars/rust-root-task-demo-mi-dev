@@ -25,11 +25,3 @@ macro_rules! test_func {
 pub const fn align_bits<T: Into<usize> + From<usize>>(a: T, b: usize) -> T {
     (a.into() & !((1 << b) - 1)).into()
 }
-
-pub fn sys_null(sys: isize) {
-    unsafe {
-        core::arch::asm!("svc 0",
-            in("x7") sys,
-        );
-    }
-}

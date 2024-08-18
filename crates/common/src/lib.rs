@@ -7,7 +7,8 @@ use sel4::MessageInfo;
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum CustomMessageLabel {
     TestCustomMessage = 0,
-    Exit = 1,
+    SysCall = 1,
+    Exit = 2,
 }
 
 impl CustomMessageLabel {
@@ -17,14 +18,15 @@ impl CustomMessageLabel {
     /// Try to convert a MessageInfo to a CustomMessageLabel
     pub fn try_from(message: &MessageInfo) -> Option<CustomMessageLabel> {
         // Get the true index for the CustomMessageLabel
-        let label = match message.label() > Self::LABEL_START {
+        let label = match message.label() >= Self::LABEL_START {
             true => message.label() - Self::LABEL_START,
             false => return None,
         };
         // Convert the true index to a CustomMessageLabel enum
         match label {
             0x0 => Some(CustomMessageLabel::TestCustomMessage),
-            0x1 => Some(CustomMessageLabel::Exit),
+            0x1 => Some(CustomMessageLabel::SysCall),
+            0x2 => Some(CustomMessageLabel::Exit),
             _ => None,
         }
     }

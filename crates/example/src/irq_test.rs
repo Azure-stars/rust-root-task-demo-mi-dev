@@ -1,12 +1,12 @@
 use sel4::{debug_println, BootInfo};
 
-use crate::object_allocator::ObjectAllocator;
+use crate::object_allocator::{allocate_irq_handler, allocate_notification};
 
 const SERIAL_DEVICE_IRQ: usize = 33;
 
-pub fn test_irq(obj_allocator: &mut ObjectAllocator) {
-    let irq_handler = obj_allocator.allocate_irq_handler();
-    let notification = obj_allocator.allocate_notification();
+pub fn test_irq() {
+    let irq_handler = allocate_irq_handler();
+    let notification = allocate_notification();
 
     BootInfo::irq_control()
         .irq_control_get(
@@ -20,7 +20,7 @@ pub fn test_irq(obj_allocator: &mut ObjectAllocator) {
 
     irq_handler.irq_handler_ack().unwrap();
 
-    debug_println!("Waiting for irq notification");
+    debug_println!("[Kernel Thread] Waiting for irq notification");
     notification.wait();
-    debug_println!("received notification");
+    debug_println!("[Kernel Thread] Received irq notification");
 }

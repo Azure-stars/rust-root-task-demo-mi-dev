@@ -7,9 +7,9 @@ SECTIONS
 {
     /* Load the kernel at this address: "." means the current address */
     . = BASE_ADDRESS;
-    start = .;
 
     .text ALIGN(4K): {
+        .text._start = .;
         *(.text .text.*)
     }
 

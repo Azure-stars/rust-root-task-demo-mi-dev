@@ -159,12 +159,14 @@ version = "0.1.0"
 dependencies = [
  "buddy_system_allocator",
  "common",
+ "log",
  "sel4",
  "sel4-initialize-tls-on-stack",
  "sel4-logging",
  "sel4-root-task",
  "sel4-sys",
  "spin",
+ "syscalls",
  "xmas-elf",
 ]
 
@@ -716,6 +718,12 @@ dependencies = [
  "quote",
  "unicode-ident",
 ]
+
+[[package]]
+name = "syscalls"
+version = "0.6.18"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "43d0e35dc7d73976a53c7e6d7d177ef804a0c0ee774ec77bcc520c2216fd7cbe"
 
 [[package]]
 name = "thiserror"

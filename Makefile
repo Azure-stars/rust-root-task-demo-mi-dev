@@ -61,7 +61,7 @@ $(app_intermediate):
 			--target $(TARGET) \
 			--target-dir $(abspath $(build_dir)/target) \
 			--out-dir $(build_dir) \
-			-p shim-comp --release
+			-p shim-comp
 	SEL4_PREFIX=$(sel4_prefix) \
 		cargo build \
 			-Z build-std=core,alloc,compiler_builtins \
@@ -91,6 +91,10 @@ qemu_cmd := \
 .PHONY: run
 run: $(image)
 	$(qemu_cmd)
+	rm $(image)
+
+debug: $(image)
+	$(qemu_cmd) -s -S
 	rm $(image)
 
 .PHONY: test
