@@ -35,9 +35,9 @@ pub fn handle_ipc_call(
                 if let Some(cap) = task.mapped_page.get(&align_bits(args[1], 12)) {
                     let new_cap = LocalCPtr::<sel4::cap_type::SmallPage>::from_bits(0);
                     BootInfo::init_thread_cnode()
-                        .relative(new_cap.cptr())
+                        .relative_bits_with_depth(new_cap.bits(), 12)
                         .copy(
-                            &BootInfo::init_thread_cnode().relative(cap.cptr()),
+                            &BootInfo::init_thread_cnode().relative_bits_with_depth(cap.bits(), 12),
                             CapRights::all(),
                         )
                         .unwrap();
@@ -63,7 +63,7 @@ pub fn handle_ipc_call(
                     new_cap.frame_unmap().unwrap();
 
                     BootInfo::init_thread_cnode()
-                        .relative(new_cap.cptr())
+                        .relative_bits_with_depth(new_cap.bits(), 12)
                         .delete()
                         .unwrap();
                 }

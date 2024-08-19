@@ -8,7 +8,7 @@ use core::ops::Range;
 
 use sel4::{
     cap_type, BootInfo, ObjectBlueprint, ObjectBlueprintAArch64, ObjectBlueprintArch,
-    ObjectBlueprintArm,
+    ObjectBlueprintArm, Untyped,
 };
 use spin::Mutex;
 
@@ -45,9 +45,9 @@ impl ObjectAllocator {
     }
 
     /// Init object allocator with [sel4::BootInfo]
-    pub(crate) fn init(&mut self, bootinfo: &sel4::BootInfo) {
-        self.empty_slots = bootinfo.empty();
-        self.ut = find_largest_untyped(bootinfo);
+    pub(crate) fn init(&mut self, empty_range: Range<usize>, untyped: Untyped) {
+        self.empty_slots = empty_range;
+        self.ut = untyped;
     }
 }
 
@@ -173,31 +173,4 @@ pub(crate) fn allocate_pt() -> sel4::PT {
         )
         .expect("can't allocate notification");
     sel4::BootInfo::init_cspace_local_cptr::<sel4::cap_type::PT>(slot_index)
-}
-// TODO: Allocate cap with Generic definition.
-// pub(crate) fn allocate<C: CapType>(&mut self) -> sel4::LocalCPtr<C> {
-//     let slot_index = self.empty_slots.next().unwrap();
-//     self.ut
-//         .untyped_retype(
-//             &ObjectBlueprint::Arch(ObjectBlueprintArm::SmallPage),
-//             &BootInfo::init_thread_cnode().relative_self(),
-//             slot_index,
-//             1,
-//         )
-//         .expect("can't allocate notification");
-//     sel4::BootInfo::init_cspace_local_cptr::<C>(slot_index)
-// }
-
-/// Find the largest untyped cap available in the [sel4::BootInfo] structure
-fn find_largest_untyped(bootinfo: &sel4::BootInfo) -> sel4::Untyped {
-    let (ut_ix, _desc) = bootinfo
-        .untyped_list()
-        .iter()
-        .enumerate()
-        .filter(|(_i, desc)| !desc.is_device())
-        .max_by_key(|(_i, desc)| desc.size_bits())
-        .unwrap();
-
-    let idx = bootinfo.untyped().start + ut_ix;
-    sel4::BootInfo::init_cspace_local_cptr::<sel4::cap_type::Untyped>(idx)
 }

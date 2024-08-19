@@ -23,19 +23,22 @@ pub fn test_child(ep: Endpoint) -> Result<()> {
     log::debug!("Run Command {:?}", args);
     let mut task = Sel4Task::new();
 
+    // sel4::debug_snapshot();
+
     // Copy tcb to target cnode
     task.cnode
         .relative_bits_with_depth(1, 12)
         .copy(
-            &BootInfo::init_thread_cnode().relative(task.tcb),
+            &BootInfo::init_thread_cnode().relative_bits_with_depth(task.tcb.bits(), 12),
             CapRights::all(),
         )
         .unwrap();
+
     // Copy EndPoint to target cnode
     task.cnode
         .relative_bits_with_depth(ep.cptr().bits(), 12)
         .copy(
-            &BootInfo::init_thread_cnode().relative(ep),
+            &BootInfo::init_thread_cnode().relative_bits_with_depth(ep.bits(), 12),
             CapRights::all(),
         )
         .unwrap();
@@ -150,19 +153,7 @@ pub fn test_child(ep: Endpoint) -> Result<()> {
     task.tcb.tcb_suspend().unwrap();
 
     // TODO: Free memory from slots.
-    let rcnode = BootInfo::init_thread_cnode();
 
-    rcnode.relative(task.cnode).revoke().unwrap();
-    rcnode.relative(task.cnode).delete().unwrap();
-
-    rcnode.relative(task.tcb).revoke().unwrap();
-    rcnode.relative(task.tcb).delete().unwrap();
-
-    rcnode.relative(task.vspace).revoke().unwrap();
-    rcnode.relative(task.vspace).delete().unwrap();
-
-    rcnode.relative(ep).revoke().unwrap();
-    rcnode.relative(ep).delete().unwrap();
     Ok(())
 }
 

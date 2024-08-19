@@ -44,7 +44,7 @@ none:
 clean:
 	rm -rf $(build_dir)
 
-app_crate := example
+app_crate := root-task
 app := $(build_dir)/$(app_crate).elf
 app_intermediate := $(build_dir)/$(app_crate).intermediate
 
@@ -61,7 +61,7 @@ $(app_intermediate):
 			--target $(TARGET) \
 			--target-dir $(abspath $(build_dir)/target) \
 			--out-dir $(build_dir) \
-			-p shim-comp
+			-p shim-comp -p kernel-thread
 	SEL4_PREFIX=$(sel4_prefix) \
 		cargo build \
 			-Z build-std=core,alloc,compiler_builtins \

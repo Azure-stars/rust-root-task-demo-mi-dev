@@ -11,32 +11,28 @@
 #![feature(effects)]
 
 extern crate alloc;
+extern crate sel4_panicking;
 
 mod alloc_impl;
 mod child;
-mod image_utils;
 mod ipc_call;
 mod irq_test;
 mod object_allocator;
 mod task;
 mod utils;
-use core::{cell::UnsafeCell, fmt};
+use core::fmt;
 
-use image_utils::UserImageUtils;
 use log::{Level, Record};
 use object_allocator::{allocate_ep, OBJ_ALLOCATOR};
-use sel4::{cap_type::SmallPage, debug_println, LocalCPtr, GRANULE_SIZE};
+use sel4::{debug_println, set_ipc_buffer, IPCBuffer, LocalCPtr};
 use sel4_logging::{LevelFilter, Logger};
-use sel4_root_task::root_task;
+use sel4_sys::seL4_DebugPutChar;
 
-#[repr(align(4096))]
-pub struct AlignedPage(UnsafeCell<[u8; 4096]>);
-
-static mut PAGE_FRAME_SEAT: AlignedPage = AlignedPage(UnsafeCell::new([0; GRANULE_SIZE.bytes()]));
+sel4_panicking_env::register_debug_put_char!(seL4_DebugPutChar);
 
 /// Get the virtual address of the page seat.
 pub fn page_seat_vaddr() -> usize {
-    unsafe { PAGE_FRAME_SEAT.0.get() as _ }
+    0x1_0000_2000
 }
 
 pub fn fmt_with_module(record: &Record, f: &mut fmt::Formatter) -> fmt::Result {
@@ -75,8 +71,8 @@ pub fn level_to_filter(log_level: Option<&str>) -> LevelFilter {
     }
 }
 
-#[root_task]
-fn main(bootinfo: &sel4::BootInfo) -> sel4::Result<!> {
+#[export_name = "_start"]
+fn main(ipc_buffer: IPCBuffer) -> sel4::Result<!> {
     static mut LOGGER: Logger = sel4_logging::LoggerBuilder::const_default()
         .write(|s| sel4::debug_print!("{}", s))
         .fmt(fmt_with_module)
@@ -94,16 +90,14 @@ fn main(bootinfo: &sel4::BootInfo) -> sel4::Result<!> {
         LOGGER.set().unwrap();
         debug_println!();
         debug_println!("[Kernel Thread] Log Filter: {:?}", LOGGER.level_filter());
-    }
+    }    
 
-    UserImageUtils.init(bootinfo);
+    set_ipc_buffer(ipc_buffer);
 
-    let page_seat_cap = UserImageUtils.get_user_image_frame_slot(page_seat_vaddr()) as _;
-    LocalCPtr::<SmallPage>::from_bits(page_seat_cap)
-        .frame_unmap()
-        .unwrap();
+    // sel4::debug_snapshot();
 
-    OBJ_ALLOCATOR.lock().init(bootinfo);
+    // TODO: Init ObjAllocator
+    OBJ_ALLOCATOR.lock().init(19..1023, LocalCPtr::from_bits(17 as _));
 
     test_func!("Test IRQ", irq_test::test_irq());
 
@@ -114,4 +108,11 @@ fn main(bootinfo: &sel4::BootInfo) -> sel4::Result<!> {
 
     sel4::BootInfo::init_thread_tcb().tcb_suspend()?;
     unreachable!()
+}
+
+#[allow(non_snake_case)]
+#[no_mangle]
+pub extern "C" fn _Unwind_Resume() -> ! {
+    debug_println!("Task Error");
+    loop {}
 }

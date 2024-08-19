@@ -1,6 +1,8 @@
 #![no_std]
 
-use sel4::MessageInfo;
+use core::cell::UnsafeCell;
+
+use sel4::{MessageInfo, GRANULE_SIZE};
 
 /// Custom Message Label for transfer between tasks.
 #[repr(usize)]
@@ -33,5 +35,21 @@ impl CustomMessageLabel {
 
     pub fn to_label(&self) -> u64 {
         *self as u64 + Self::LABEL_START
+    }
+}
+
+/// Page aligned with [GRANULE_SIZE]
+#[repr(align(4096))]
+pub struct AlignedPage(UnsafeCell<[u8; GRANULE_SIZE.bytes()]>);
+
+impl AlignedPage {
+    /// Create a new aligned page with [GRANULE_SIZE] of data
+    pub const fn new() -> Self {
+        Self(UnsafeCell::new([0; GRANULE_SIZE.bytes()]))
+    }
+
+    /// Get the ptr of the aligned page
+    pub const fn ptr(&self) -> *mut u8 {
+        self.0.get() as _
     }
 }

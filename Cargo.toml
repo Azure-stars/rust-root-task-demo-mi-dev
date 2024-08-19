@@ -8,4 +8,11 @@
 
 resolver = "2"
 
-members = ["crates/common", "crates/example", "crates/shim-comp"]
+members = [
+    "crates/alloc-helper",
+    "crates/kernel-thread",
+    "crates/common",
+    "crates/root-task",
+    "crates/shim-comp",
+    "crates/task-helper",
+]
