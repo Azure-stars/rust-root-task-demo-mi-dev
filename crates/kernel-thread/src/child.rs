@@ -2,14 +2,14 @@ use core::cmp;
 
 use common::CustomMessageLabel;
 use sel4::{
-    debug_println, r#yield, reply, with_ipc_buffer, with_ipc_buffer_mut, BootInfo, CNodeCapData,
-    CapRights, Endpoint, Fault, MessageInfo, Result, Word,
+    cap_type, debug_println, r#yield, reply, with_ipc_buffer, with_ipc_buffer_mut, BootInfo,
+    CNodeCapData, CapRights, Endpoint, Fault, MessageInfo, Result, Word,
 };
 use xmas_elf::ElfFile;
 
 use crate::{
     ipc_call::handle_ipc_call,
-    object_allocator::allocate_page,
+    object_allocator::alloc_cap,
     task::{Sel4Task, DEFAULT_USER_STACK_SIZE},
     utils::align_bits,
 };
@@ -29,7 +29,7 @@ pub fn test_child(ep: Endpoint) -> Result<()> {
     task.cnode
         .relative_bits_with_depth(1, 12)
         .copy(
-            &BootInfo::init_thread_cnode().relative_bits_with_depth(task.tcb.bits(), 12),
+            &BootInfo::init_thread_cnode().relative(task.tcb),
             CapRights::all(),
         )
         .unwrap();
@@ -38,7 +38,7 @@ pub fn test_child(ep: Endpoint) -> Result<()> {
     task.cnode
         .relative_bits_with_depth(ep.cptr().bits(), 12)
         .copy(
-            &BootInfo::init_thread_cnode().relative_bits_with_depth(ep.bits(), 12),
+            &BootInfo::init_thread_cnode().relative(ep),
             CapRights::all(),
         )
         .unwrap();
@@ -52,11 +52,11 @@ pub fn test_child(ep: Endpoint) -> Result<()> {
         &busybox_file,
         DEFAULT_USER_STACK_SIZE - 0x10000,
         DEFAULT_USER_STACK_SIZE,
-        args
+        args,
     );
 
     let file = ElfFile::new(CHILD_ELF).expect("can't load elf file");
-    let ipc_buffer_cap = allocate_page();
+    let ipc_buffer_cap = alloc_cap::<cap_type::Granule>();
     let max = file
         .section_iter()
         .fold(0, |acc, x| cmp::max(acc, x.address() + x.size()));
@@ -115,7 +115,7 @@ pub fn test_child(ep: Endpoint) -> Result<()> {
             match fault {
                 Fault::VMFault(vmfault) => {
                     let vaddr = align_bits(vmfault.addr() as usize, 12);
-                    let page_cap = allocate_page();
+                    let page_cap = alloc_cap::<cap_type::Granule>();
 
                     task.map_page(vaddr, page_cap);
 

@@ -1,13 +1,8 @@
-//
-// Copyright 2024, Colias Group, LLC
-//
-// SPDX-License-Identifier: BSD-2-Clause
-//
-
 use core::ops::Range;
 
 use sel4::{
-    cap_type, BootInfo, CapType, ObjectBlueprint, ObjectBlueprintAArch64, ObjectBlueprintArch, Untyped,
+    cap_type, BootInfo, CapType, ObjectBlueprint, ObjectBlueprintAArch64, ObjectBlueprintArch,
+    Untyped,
 };
 use spin::Mutex;
 

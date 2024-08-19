@@ -1,8 +1,8 @@
-use sel4::{BootInfo, CapRights, LocalCPtr, VMAttributes};
+use sel4::{cap_type, BootInfo, CapRights, LocalCPtr, VMAttributes};
 use sel4_sys::seL4_DebugPutChar;
 use syscalls::{Errno, Sysno};
 
-use crate::{object_allocator::allocate_page, page_seat_vaddr, task::Sel4Task, utils::align_bits};
+use crate::{object_allocator::alloc_cap, page_seat_vaddr, task::Sel4Task, utils::align_bits};
 
 pub fn handle_ipc_call(
     task: &mut Sel4Task,
@@ -25,7 +25,7 @@ pub fn handle_ipc_call(
                 if task.mapped_page.get(&vaddr).is_some() {
                     continue;
                 }
-                let page_cap = allocate_page();
+                let page_cap = alloc_cap::<cap_type::Granule>();
                 task.map_page(vaddr, page_cap);
             }
             addr
@@ -35,9 +35,9 @@ pub fn handle_ipc_call(
                 if let Some(cap) = task.mapped_page.get(&align_bits(args[1], 12)) {
                     let new_cap = LocalCPtr::<sel4::cap_type::SmallPage>::from_bits(0);
                     BootInfo::init_thread_cnode()
-                        .relative_bits_with_depth(new_cap.bits(), 12)
+                        .relative(new_cap)
                         .copy(
-                            &BootInfo::init_thread_cnode().relative_bits_with_depth(cap.bits(), 12),
+                            &BootInfo::init_thread_cnode().relative(*cap),
                             CapRights::all(),
                         )
                         .unwrap();
@@ -63,7 +63,7 @@ pub fn handle_ipc_call(
                     new_cap.frame_unmap().unwrap();
 
                     BootInfo::init_thread_cnode()
-                        .relative_bits_with_depth(new_cap.bits(), 12)
+                        .relative(new_cap)
                         .delete()
                         .unwrap();
                 }

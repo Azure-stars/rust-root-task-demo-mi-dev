@@ -132,7 +132,7 @@ pub fn vsyscall_handler(
     // Ensure that has one WORD_SIZE contains result.
     assert_eq!(message.length(), WORD_SIZE);
 
-    // Get the result of the fake syscall 
+    // Get the result of the fake syscall
     let ret = with_ipc_buffer_mut(|buffer| buffer.msg_regs()[0]);
 
     // Restore The TLS Register used by linux App

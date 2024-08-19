@@ -16,18 +16,17 @@ mod obj_allocator;
 mod task;
 mod utils;
 
-use core::mem::size_of;
-
 use alloc::vec::Vec;
 use alloc_helper::defind_allocator;
-use common::AlignedPage;
+use common::{AlignedPage, RootMessageLabel};
 use obj_allocator::{alloc_cap, alloc_cap_size, OBJ_ALLOCATOR};
 use sel4::{
-    cap_type, debug_println, reply, sys, with_ipc_buffer, with_ipc_buffer_mut, BootInfo, CapRights,
+    cap_type, debug_println, reply, with_ipc_buffer_mut, BootInfo, CNodeCapData, CapRights,
     MessageInfo, UntypedDesc,
 };
 use sel4_root_task::root_task;
 use task::Sel4Task;
+use utils::abs_cptr;
 use xmas_elf::ElfFile;
 
 /// Default size of the global allocator
@@ -46,6 +45,11 @@ static mut PAGE_FRAME_SEAT: AlignedPage = AlignedPage::new();
 pub fn page_seat_vaddr() -> usize {
     unsafe { PAGE_FRAME_SEAT.ptr() as _ }
 }
+
+/// The radix bits of the cnode in the task.
+const CNODE_RADIX_BITS: usize = 12;
+/// The guard bits of the cnode in the task.
+const CNODE_GUARD_BITS: usize = 20;
 
 const TASK_FILES: &[&[u8]] = &[include_bytes!("../../../build/kernel-thread.elf")];
 
@@ -85,10 +89,33 @@ fn main(bootinfo: &sel4::BootInfo) -> sel4::Result<!> {
         ),
     );
 
-    let cnode = alloc_cap_size::<cap_type::CNode>(12);
+    let cnode = alloc_cap_size::<cap_type::CNode>(CNODE_RADIX_BITS);
+    let inner_cnode = alloc_cap_size::<cap_type::CNode>(CNODE_RADIX_BITS);
     let tcb = alloc_cap::<cap_type::TCB>();
     let vspace = alloc_cap::<cap_type::VSpace>();
     let fault_ep = alloc_cap::<cap_type::Endpoint>();
+    cnode
+        .relative_bits_with_depth(0, CNODE_RADIX_BITS)
+        .mutate(
+            &abs_cptr(inner_cnode),
+            CNodeCapData::skip(CNODE_GUARD_BITS).into_word() as _,
+        )
+        .unwrap();
+
+    abs_cptr(BootInfo::null())
+        .mutate(
+            &abs_cptr(cnode),
+            CNodeCapData::skip(CNODE_GUARD_BITS).into_word() as _,
+        )
+        .unwrap();
+
+    abs_cptr(cnode)
+        .mint(
+            &abs_cptr(BootInfo::null()),
+            CapRights::all(),
+            CNodeCapData::skip(CNODE_GUARD_BITS).into_word() as _,
+        )
+        .unwrap();
 
     BootInfo::init_thread_asid_pool()
         .asid_pool_assign(vspace)
@@ -97,56 +124,53 @@ fn main(bootinfo: &sel4::BootInfo) -> sel4::Result<!> {
     let mut task = Sel4Task::new(tcb, cnode, fault_ep, vspace);
 
     // Configure Root Task
-    task.configure()?;
+    task.configure(CNODE_GUARD_BITS)?;
 
     // Map stack for the task.
     task.map_stack(10);
 
-    // cptr
+    // set task priority and max control priority
     task.tcb
         .tcb_set_sched_params(sel4::BootInfo::init_thread_tcb(), 255, 255)?;
-
 
     // Map elf file for the task.
     task.map_elf(ElfFile::new(TASK_FILES[0]).expect("can't map elf file in root_task"));
 
-    // Copy tcb to task's Cap Space.
-    task.abs_cptr(sys::seL4_RootCapSlot::seL4_CapInitThreadTCB.into())
-        .copy(&utils::abs_cptr(tcb), CapRights::all())
-        .unwrap();
-
-    task.abs_cptr(sys::seL4_RootCapSlot::seL4_CapInitThreadVSpace.into())
-        .copy(&utils::abs_cptr(vspace), CapRights::all())
-        .unwrap();
-
-    task.abs_cptr(sys::seL4_RootCapSlot::seL4_CapInitThreadCNode.into())
-        .copy(&utils::abs_cptr(cnode), CapRights::all())
-        .unwrap();
-
+    // Transfer a untyped memory to kernel_untyped_memory.
     task.abs_cptr(17 as _)
         .copy(&utils::abs_cptr(kernel_untyped), CapRights::all())
         .unwrap();
 
+    // Resume Kernel-Thread Task.
     task.tcb.tcb_resume().unwrap();
 
-    let (message, _badge) = fault_ep.recv(());
-    debug_println!("received message: {:#x?}, badge: {}", message, _badge);
+    // Waiting for IPC Call.
+    loop {
+        let (message, _badge) = fault_ep.recv(());
+        debug_println!("received message: {:#x?}, badge: {}", message, _badge);
 
-    let (irq_handler, irq_num) = with_ipc_buffer(|buffer| {
-        assert_eq!(message.label(), 2 * size_of::<u64>() as u64);
-        let regs = buffer.msg_regs();
-        (regs[0], regs[1])
-    });
+        // let (irq_handler, irq_num) = with_ipc_buffer(|buffer| {
+        //     assert_eq!(message.label(), 2 * size_of::<u64>() as u64);
+        //     let regs = buffer.msg_regs();
+        //     (regs[0], regs[1])
+        // });
+        if let Some(info) = RootMessageLabel::try_from(&message) {
+            match info {
+                RootMessageLabel::RegisterIRQ(irq_handler, irq_num) => {
+                    BootInfo::irq_control()
+                        .irq_control_get(irq_num, &task.abs_cptr(irq_handler))
+                        .unwrap();
 
-    BootInfo::irq_control()
-        .irq_control_get(irq_num, &task.abs_cptr(irq_handler))
-        .unwrap();
-
-    with_ipc_buffer_mut(|buffer| {
-        reply(buffer, MessageInfo::new(0, 0, 0, 0));
-    });
+                    // Reply message
+                    with_ipc_buffer_mut(|buffer| {
+                        reply(buffer, MessageInfo::new(0, 0, 0, 0));
+                    });
+                }
+            }
+        }
+    }
 
     // Stop Root Task.
-    sel4::BootInfo::init_thread_tcb().tcb_suspend()?;
-    unreachable!()
+    // sel4::BootInfo::init_thread_tcb().tcb_suspend()?;
+    // unreachable!()
 }

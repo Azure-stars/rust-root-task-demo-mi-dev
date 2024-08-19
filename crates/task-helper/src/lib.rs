@@ -5,8 +5,8 @@ use core::{cmp, marker::PhantomData};
 
 use alloc::{collections::btree_map::BTreeMap, vec::Vec};
 use sel4::{
-    sys, AbsoluteCPtr, BootInfo, CNodeCapData, CPtr, CPtrBits, CapRights, Error, Granule,
-    HasCPtrWithDepth, VMAttributes,
+    cap_type, sys, AbsoluteCPtr, BootInfo, CNodeCapData, CPtr, CPtrBits, CapRights, Error, Granule,
+    HasCPtrWithDepth, LocalCPtr, VMAttributes,
 };
 use xmas_elf::{program, ElfFile};
 
@@ -15,8 +15,6 @@ extern crate alloc;
 /// The size of the page [sel4::GRANULE_SIZE].
 const PAGE_SIZE: usize = sel4::GRANULE_SIZE.bytes();
 
-/// The radix bits of the cnode in the task.
-const CNODE_RADIX_BITS: usize = 12;
 /// Stack aligned with [STACK_ALIGN_SIZE] bytes
 const STACK_ALIGN_SIZE: usize = 16;
 
@@ -214,13 +212,33 @@ impl<H: TaskHelperTrait<Self>> Sel4TaskHelper<H> {
     }
 
     /// Configure the [sel4::TCB] in the task
-    pub fn configure(&mut self) -> Result<(), Error> {
+    pub fn configure(&mut self, guard_size: usize) -> Result<(), Error> {
         let (ib_addr, ib_cap) = self.init_ipc_buffer();
+
+        // Move cap rights to child process
+        self.abs_cptr(sys::seL4_RootCapSlot::seL4_CapInitThreadCNode.into())
+            .mint(
+                &init_abs_cptr(self.cnode),
+                CapRights::all(),
+                CNodeCapData::skip(guard_size).into_word(),
+            )
+            .unwrap();
+
+        // Copy tcb to task's Cap Space.
+        self.abs_cptr(sys::seL4_RootCapSlot::seL4_CapInitThreadTCB.into())
+            .copy(&init_abs_cptr(self.tcb), CapRights::all())
+            .unwrap();
+
+        self.abs_cptr(sys::seL4_RootCapSlot::seL4_CapInitThreadVSpace.into())
+            .copy(&init_abs_cptr(self.vspace), CapRights::all())
+            .unwrap();
+
+        // Configure the tcb structure
         self.tcb.tcb_configure(
             // TODO: make this in a constant
             CPtr::from_bits(18),
             self.cnode,
-            CNodeCapData::skip_high_bits(CNODE_RADIX_BITS),
+            CNodeCapData::skip(guard_size),
             self.vspace,
             ib_addr as _,
             ib_cap,
@@ -239,7 +257,9 @@ impl<H: TaskHelperTrait<Self>> Sel4TaskHelper<H> {
     /// Get the the absolute cptr related to task's cnode through cptr_bits.
     pub fn abs_cptr(&self, cptr_bits: CPtrBits) -> AbsoluteCPtr {
         self.cnode
-            .relative_bits_with_depth(cptr_bits, CNODE_RADIX_BITS)
+            .relative(LocalCPtr::<cap_type::Null>::from_cptr(CPtr::from_bits(
+                cptr_bits,
+            )))
     }
 }
 

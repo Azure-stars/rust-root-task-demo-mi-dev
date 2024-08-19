@@ -23,8 +23,8 @@ mod utils;
 use core::fmt;
 
 use log::{Level, Record};
-use object_allocator::{allocate_ep, OBJ_ALLOCATOR};
-use sel4::{debug_println, set_ipc_buffer, IPCBuffer, LocalCPtr};
+use object_allocator::{alloc_cap, OBJ_ALLOCATOR};
+use sel4::{cap_type, debug_println, set_ipc_buffer, IPCBuffer, LocalCPtr};
 use sel4_logging::{LevelFilter, Logger};
 use sel4_sys::seL4_DebugPutChar;
 
@@ -90,19 +90,21 @@ fn main(ipc_buffer: IPCBuffer) -> sel4::Result<!> {
         LOGGER.set().unwrap();
         debug_println!();
         debug_println!("[Kernel Thread] Log Filter: {:?}", LOGGER.level_filter());
-    }    
+    }
 
     set_ipc_buffer(ipc_buffer);
 
     // sel4::debug_snapshot();
 
     // TODO: Init ObjAllocator
-    OBJ_ALLOCATOR.lock().init(19..1023, LocalCPtr::from_bits(17 as _));
+    OBJ_ALLOCATOR
+        .lock()
+        .init(19..1023, LocalCPtr::from_bits(17usize as _));
 
     test_func!("Test IRQ", irq_test::test_irq());
 
     test_func!("Test Thread", {
-        let ep = allocate_ep();
+        let ep = alloc_cap::<cap_type::Endpoint>();
         child::test_child(ep).unwrap()
     });
 

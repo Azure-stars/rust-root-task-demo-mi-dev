@@ -1,7 +1,7 @@
 use sel4::{AbsoluteCPtr, BootInfo, HasCPtrWithDepth};
 
-
 /// Send a syscall to sel4 with none arguments
+#[allow(dead_code)]
 pub fn sys_null(sys: isize) {
     unsafe {
         core::arch::asm!(
@@ -13,6 +13,5 @@ pub fn sys_null(sys: isize) {
 
 /// Get [AbsoluteCPtr] from current CSpace though path.
 pub fn abs_cptr<T: HasCPtrWithDepth>(path: T) -> AbsoluteCPtr {
-    BootInfo::init_thread_cnode()
-        .relative(path)
+    BootInfo::init_thread_cnode().relative(path)
 }

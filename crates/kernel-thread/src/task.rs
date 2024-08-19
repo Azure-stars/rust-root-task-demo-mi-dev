@@ -1,11 +1,11 @@
 use core::cmp;
 
 use alloc::{collections::btree_map::BTreeMap, vec::Vec};
-use sel4::{debug_println, BootInfo, CapRights, Error, SmallPage, VMAttributes};
+use sel4::{cap_type, debug_println, BootInfo, CapRights, Error, SmallPage, VMAttributes};
 use xmas_elf::{program, ElfFile};
 
 use crate::{
-    object_allocator::{allocate_cnode, allocate_page, allocate_pt, allocate_tcb, allocate_vspace},
+    object_allocator::{alloc_cap, alloc_cap_size},
     page_seat_vaddr,
 };
 
@@ -79,35 +79,35 @@ pub struct Sel4Task {
 impl Drop for Sel4Task {
     fn drop(&mut self) {
         let root_cnode = BootInfo::init_thread_cnode();
-        root_cnode.relative_bits_with_depth(self.tcb.bits(), 12).revoke().unwrap();
-        root_cnode.relative_bits_with_depth(self.tcb.bits(), 12).delete().unwrap();
-        root_cnode.relative_bits_with_depth(self.cnode.bits(), 12).revoke().unwrap();
-        root_cnode.relative_bits_with_depth(self.cnode.bits(), 12).delete().unwrap();
-        root_cnode.relative_bits_with_depth(self.vspace.bits(), 12).revoke().unwrap();
-        root_cnode.relative_bits_with_depth(self.vspace.bits(), 12).delete().unwrap();
+        root_cnode.relative(self.tcb).revoke().unwrap();
+        root_cnode.relative(self.tcb).delete().unwrap();
+        root_cnode.relative(self.cnode).revoke().unwrap();
+        root_cnode.relative(self.cnode).delete().unwrap();
+        root_cnode.relative(self.vspace).revoke().unwrap();
+        root_cnode.relative(self.vspace).delete().unwrap();
 
         self.mapped_pt.iter().for_each(|cap| {
-            root_cnode.relative_bits_with_depth(cap.bits(), 12).revoke().unwrap();
-            root_cnode.relative_bits_with_depth(cap.bits(), 12).delete().unwrap();
+            root_cnode.relative(*cap).revoke().unwrap();
+            root_cnode.relative(*cap).delete().unwrap();
         });
         self.mapped_page.values().for_each(|cap| {
-            root_cnode.relative_bits_with_depth(cap.bits(), 12).revoke().unwrap();
-            root_cnode.relative_bits_with_depth(cap.bits(), 12).delete().unwrap();
+            root_cnode.relative(*cap).revoke().unwrap();
+            root_cnode.relative(*cap).delete().unwrap();
         });
     }
 }
 
 impl Sel4Task {
     pub fn new() -> Sel4Task {
-        let vspace = allocate_vspace();
+        let vspace = alloc_cap::<cap_type::VSpace>();
 
         BootInfo::init_thread_asid_pool()
             .asid_pool_assign(vspace)
             .unwrap();
 
         Sel4Task {
-            tcb: allocate_tcb(),
-            cnode: allocate_cnode(12),
+            tcb: alloc_cap::<cap_type::TCB>(),
+            cnode: alloc_cap_size::<cap_type::CNode>(12),
             vspace,
             mapped_pt: Vec::new(),
             mapped_page: BTreeMap::new(),
@@ -131,7 +131,7 @@ impl Sel4Task {
                     return;
                 }
                 Err(Error::FailedLookup) => {
-                    let pt_cap = allocate_pt();
+                    let pt_cap = alloc_cap::<cap_type::PT>();
                     pt_cap
                         .pt_map(self.vspace, vaddr, VMAttributes::DEFAULT)
                         .unwrap();
@@ -142,12 +142,18 @@ impl Sel4Task {
         }
     }
 
-    pub fn map_stack(&mut self, file: &ElfFile, mut start: usize, end: usize, args: &[&str]) -> usize {
+    pub fn map_stack(
+        &mut self,
+        file: &ElfFile,
+        mut start: usize,
+        end: usize,
+        args: &[&str],
+    ) -> usize {
         start = start / PAGE_SIZE * PAGE_SIZE;
         let mut stack_ptr = DEFAULT_USER_STACK_SIZE;
 
         for vaddr in (start..end).step_by(PAGE_SIZE) {
-            let page_cap = allocate_page();
+            let page_cap = alloc_cap::<cap_type::Granule>();
             if vaddr == DEFAULT_USER_STACK_SIZE - PAGE_SIZE {
                 page_cap
                     .frame_map(
@@ -233,15 +239,13 @@ impl Sel4Task {
                 let end = offset + ph.file_size() as usize;
                 let vaddr_end = vaddr + ph.mem_size() as usize;
 
-                log::debug!("map {vaddr:#x} - {vaddr_end:#x}");
-
                 while vaddr < vaddr_end {
                     let page_cap = match mapped_page.remove(&(vaddr / PAGE_SIZE * PAGE_SIZE)) {
                         Some(page_cap) => {
                             page_cap.frame_unmap().unwrap();
                             page_cap
                         }
-                        None => allocate_page(),
+                        None => alloc_cap::<cap_type::Granule>(),
                     };
 
                     // If need to read data from elf file.
@@ -293,7 +297,7 @@ impl Sel4Task {
             return self.heap;
         }
         for vaddr in (self.heap..value).step_by(0x1000) {
-            let page_cap = allocate_page();
+            let page_cap = alloc_cap::<cap_type::Granule>();
             self.map_page(vaddr, page_cap);
         }
         value

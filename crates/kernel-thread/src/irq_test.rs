@@ -1,27 +1,17 @@
-use core::mem::size_of;
+use common::RootMessageLabel;
+use sel4::{cap_type, debug_println, LocalCPtr};
 
-use sel4::{cap_type, debug_println, with_ipc_buffer_mut, LocalCPtr, MessageInfo};
-
-use crate::object_allocator::{allocate_irq_handler, allocate_notification};
+use crate::object_allocator::alloc_cap;
 
 const SERIAL_DEVICE_IRQ: usize = 33;
 
 pub fn test_irq() {
-    let irq_handler = allocate_irq_handler();
-    let notification = allocate_notification();
+    let irq_handler = alloc_cap::<cap_type::IRQHandler>();
+    let notification = alloc_cap::<cap_type::Notification>();
     let ep = LocalCPtr::<cap_type::Endpoint>::from_bits(18);
-    with_ipc_buffer_mut(|buffer| {
-        buffer.msg_regs_mut()[0] = irq_handler.bits();
-        buffer.msg_regs_mut()[1] = SERIAL_DEVICE_IRQ as _;
-    });
-    let message = MessageInfo::new(0x10, 0, 0, 2 * size_of::<u64>());
-    ep.call(message);
-    // BootInfo::irq_control()
-    //     .irq_control_get(
-    //         SERIAL_DEVICE_IRQ as _,
-    //         &BootInfo::init_thread_cnode().relative(irq_handler),
-    //     )
-    //     .unwrap();
+
+    ep.call(RootMessageLabel::RegisterIRQ(irq_handler.bits(), SERIAL_DEVICE_IRQ as _).build());
+
     irq_handler
         .irq_handler_set_notification(notification)
         .unwrap();
