@@ -137,7 +137,6 @@ impl<H: TaskHelperTrait<Self>> Sel4TaskHelper<H> {
                         }
                         None => H::allocate_page(self),
                     };
-
                     // If need to read data from elf file.
                     if offset < end {
                         // Map to root task to write datas.
@@ -182,8 +181,10 @@ impl<H: TaskHelperTrait<Self>> Sel4TaskHelper<H> {
         *user_context.gpr_mut(0) = H::IPC_BUFFER_ADDR as _;
         // Set TLS base address.
         user_context.inner_mut().tpidr_el0 = file
-            .find_section_by_name(".tbss")
-            .map_or(0, |tls| tls.address());
+            .program_iter()
+            .find(|x| x.get_type() == Ok(program::Type::Tls))
+            .map(|x| x.virtual_addr())
+            .unwrap_or(0);
         // Write register to the task.
         self.tcb
             .tcb_write_all_registers(false, &mut user_context)
@@ -212,7 +213,7 @@ impl<H: TaskHelperTrait<Self>> Sel4TaskHelper<H> {
     }
 
     /// Configure the [sel4::TCB] in the task
-    pub fn configure(&mut self, guard_size: usize) -> Result<(), Error> {
+    pub fn configure(&mut self, radix_bits: usize) -> Result<(), Error> {
         let (ib_addr, ib_cap) = self.init_ipc_buffer();
 
         // Move cap rights to child process
@@ -220,7 +221,7 @@ impl<H: TaskHelperTrait<Self>> Sel4TaskHelper<H> {
             .mint(
                 &init_abs_cptr(self.cnode),
                 CapRights::all(),
-                CNodeCapData::skip(guard_size).into_word(),
+                CNodeCapData::skip_high_bits(radix_bits).into_word(),
             )
             .unwrap();
 
@@ -238,7 +239,7 @@ impl<H: TaskHelperTrait<Self>> Sel4TaskHelper<H> {
             // TODO: make this in a constant
             CPtr::from_bits(18),
             self.cnode,
-            CNodeCapData::skip(guard_size),
+            CNodeCapData::skip_high_bits(radix_bits),
             self.vspace,
             ib_addr as _,
             ib_cap,

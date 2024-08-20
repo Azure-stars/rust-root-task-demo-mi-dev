@@ -61,7 +61,7 @@ $(app_intermediate):
 			--target $(TARGET) \
 			--target-dir $(abspath $(build_dir)/target) \
 			--out-dir $(build_dir) \
-			-p shim-comp -p kernel-thread
+			-p shim-comp -p kernel-thread -p blk-thread
 	SEL4_PREFIX=$(sel4_prefix) \
 		cargo build \
 			-Z build-std=core,alloc,compiler_builtins \

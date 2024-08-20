@@ -1,9 +1,3 @@
-//
-// Copyright 2023, Colias Group, LLC
-//
-// SPDX-License-Identifier: BSD-2-Clause
-//
-
 #![no_std]
 #![no_main]
 #![feature(never_type)]
@@ -13,7 +7,6 @@
 extern crate alloc;
 extern crate sel4_panicking;
 
-mod alloc_impl;
 mod child;
 mod ipc_call;
 mod irq_test;
@@ -29,6 +22,14 @@ use sel4_logging::{LevelFilter, Logger};
 use sel4_sys::seL4_DebugPutChar;
 
 sel4_panicking_env::register_debug_put_char!(seL4_DebugPutChar);
+
+// Define heap allocator and add default memory.
+const DEFAULT_ALLOCATOR_SIZE: usize = 0x1_0000;
+alloc_helper::defind_allocator! {
+    /// Define a new global allocator
+    /// Size is [DEFAULT_ALLOCATOR_SIZE]
+    (GLOBAL_ALLOCATOR, DEFAULT_ALLOCATOR_SIZE)
+}
 
 /// Get the virtual address of the page seat.
 pub fn page_seat_vaddr() -> usize {

@@ -83,7 +83,7 @@ pub(crate) fn alloc_cap<C: AllocateCapBluePrint + CapType>() -> sel4::LocalCPtr<
             .ut
             .untyped_retype(
                 blue_print,
-                &BootInfo::init_thread_cnode().relative_bits_with_depth(0, 32),
+                &BootInfo::init_thread_cnode().relative_bits_with_depth(0, 52),
                 slot_index,
                 1,
             )
@@ -102,7 +102,7 @@ pub(crate) fn alloc_cap_size<C: AllocateCapBluePrintSized + CapType>(
         .ut
         .untyped_retype(
             &C::get_blueprint(size_bits),
-            &BootInfo::init_thread_cnode().relative_bits_with_depth(0, 32),
+            &BootInfo::init_thread_cnode().relative_bits_with_depth(0, 52),
             slot_index,
             1,
         )

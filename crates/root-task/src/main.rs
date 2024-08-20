@@ -19,9 +19,9 @@ mod utils;
 use alloc::vec::Vec;
 use alloc_helper::defind_allocator;
 use common::{AlignedPage, RootMessageLabel};
-use obj_allocator::{alloc_cap, alloc_cap_size, OBJ_ALLOCATOR};
+use obj_allocator::{alloc_cap, alloc_cap_size, alloc_cap_size_slot, OBJ_ALLOCATOR};
 use sel4::{
-    cap_type, debug_println, reply, with_ipc_buffer_mut, BootInfo, CNodeCapData, CapRights,
+    cap_type, debug_println, reply, with_ipc_buffer_mut, BootInfo, CNode, CNodeCapData, CapRights,
     MessageInfo, UntypedDesc,
 };
 use sel4_root_task::root_task;
@@ -48,10 +48,11 @@ pub fn page_seat_vaddr() -> usize {
 
 /// The radix bits of the cnode in the task.
 const CNODE_RADIX_BITS: usize = 12;
-/// The guard bits of the cnode in the task.
-const CNODE_GUARD_BITS: usize = 20;
 
-const TASK_FILES: &[&[u8]] = &[include_bytes!("../../../build/kernel-thread.elf")];
+const TASK_FILES: &[&[u8]] = &[
+    include_bytes!("../../../build/kernel-thread.elf"),
+    include_bytes!("../../../build/blk-thread.elf"),
+];
 
 #[root_task]
 fn main(bootinfo: &sel4::BootInfo) -> sel4::Result<!> {
@@ -83,11 +84,57 @@ fn main(bootinfo: &sel4::BootInfo) -> sel4::Result<!> {
         .expect("can't get any untyped for root-task");
 
     OBJ_ALLOCATOR.lock().init(
-        bootinfo.empty(),
+        bootinfo.empty().start..(0x1000 * 0x1000),
         BootInfo::init_cspace_local_cptr::<sel4::cap_type::Untyped>(
             mem_untyped_start + root_untyped.0,
         ),
     );
+
+    let cnode = alloc_cap_size_slot::<cap_type::CNode>(CNODE_RADIX_BITS);
+
+    cnode
+        .relative_bits_with_depth(0, CNODE_RADIX_BITS)
+        .mint(
+            &BootInfo::init_thread_cnode().relative(BootInfo::init_thread_cnode()),
+            CapRights::all(),
+            CNodeCapData::skip(0).into_word(),
+        )
+        .unwrap();
+
+    BootInfo::init_thread_tcb().debug_name(b"root");
+    // Load
+    BootInfo::init_thread_cnode()
+        .relative(BootInfo::null())
+        .mutate(
+            &BootInfo::init_thread_cnode().relative(BootInfo::init_thread_cnode()),
+            CNodeCapData::skip_high_bits(CNODE_RADIX_BITS).into_word(),
+        )
+        .unwrap();
+
+    CNode::from_bits(0)
+        .relative(BootInfo::init_thread_cnode())
+        .mint(
+            &CNode::from_bits(0).relative(cnode),
+            CapRights::all(),
+            CNodeCapData::skip_high_bits(2 * CNODE_RADIX_BITS).into_word(),
+        )
+        .unwrap();
+
+    BootInfo::init_thread_cnode()
+        .relative(BootInfo::null())
+        .delete()
+        .unwrap();
+
+    BootInfo::init_thread_tcb().invoke(|cptr, buffer| {
+        buffer.inner_mut().seL4_TCB_SetSpace(
+            cptr.bits(),
+            BootInfo::null().cptr().bits(),
+            cnode.bits(),
+            CNodeCapData::skip_high_bits(2 * CNODE_RADIX_BITS).into_word(),
+            BootInfo::init_thread_vspace().bits(),
+            0,
+        )
+    });
 
     let cnode = alloc_cap_size::<cap_type::CNode>(CNODE_RADIX_BITS);
     let inner_cnode = alloc_cap_size::<cap_type::CNode>(CNODE_RADIX_BITS);
@@ -98,33 +145,30 @@ fn main(bootinfo: &sel4::BootInfo) -> sel4::Result<!> {
         .relative_bits_with_depth(0, CNODE_RADIX_BITS)
         .mutate(
             &abs_cptr(inner_cnode),
-            CNodeCapData::skip(CNODE_GUARD_BITS).into_word() as _,
+            CNodeCapData::skip(0).into_word() as _,
         )
         .unwrap();
-
     abs_cptr(BootInfo::null())
         .mutate(
             &abs_cptr(cnode),
-            CNodeCapData::skip(CNODE_GUARD_BITS).into_word() as _,
+            CNodeCapData::skip_high_bits(2 * CNODE_RADIX_BITS).into_word() as _,
         )
         .unwrap();
-
     abs_cptr(cnode)
         .mint(
             &abs_cptr(BootInfo::null()),
             CapRights::all(),
-            CNodeCapData::skip(CNODE_GUARD_BITS).into_word() as _,
+            CNodeCapData::skip_high_bits(2 * CNODE_RADIX_BITS).into_word() as _,
         )
         .unwrap();
 
     BootInfo::init_thread_asid_pool()
         .asid_pool_assign(vspace)
         .unwrap();
-
     let mut task = Sel4Task::new(tcb, cnode, fault_ep, vspace);
 
     // Configure Root Task
-    task.configure(CNODE_GUARD_BITS)?;
+    task.configure(2 * CNODE_RADIX_BITS)?;
 
     // Map stack for the task.
     task.map_stack(10);

@@ -14,5 +14,5 @@ members = [
     "crates/common",
     "crates/root-task",
     "crates/shim-comp",
-    "crates/task-helper",
+    "crates/task-helper", "crates/blk-thread",
 ]

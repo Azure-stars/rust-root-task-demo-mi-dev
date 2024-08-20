@@ -54,6 +54,22 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "327762f6e5a765692301e5bb513e0d9fef63be86bbc14528052b1cd3e6f03e07"
 
 [[package]]
+name = "blk-thread"
+version = "0.1.0"
+dependencies = [
+ "buddy_system_allocator",
+ "common",
+ "log",
+ "sel4",
+ "sel4-initialize-tls-on-stack",
+ "sel4-logging",
+ "sel4-panicking",
+ "sel4-panicking-env",
+ "sel4-sys",
+ "spin",
+]
+
+[[package]]
 name = "block-buffer"
 version = "0.10.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -207,7 +223,7 @@ checksum = "af150ab688ff2122fcef229be89cb50dd66af9e01a4ff320cc137eecc9bacc38"
 name = "kernel-thread"
 version = "0.1.0"
 dependencies = [
- "buddy_system_allocator",
+ "alloc-helper",
  "common",
  "log",
  "sel4",

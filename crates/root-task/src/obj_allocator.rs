@@ -72,28 +72,69 @@ impl ObjectAllocator {
         self.empty_slots = empty_range;
         self.ut = untyped;
     }
+
+    /// Allocate the slot and cnode cnode slot.
+    #[inline]
+    pub(crate) fn alloc_slot(&mut self) -> (usize, usize, usize) {
+        let raw_slot_index = self.empty_slots.next().unwrap();
+        let slot_index = raw_slot_index & 0xfff;
+        let cnode_index = raw_slot_index >> 12;
+
+        if slot_index == 0 {
+            self.ut
+                .untyped_retype(
+                    &ObjectBlueprint::CNode { size_bits: 12 },
+                    &BootInfo::init_thread_cnode().relative_self(),
+                    cnode_index,
+                    1,
+                )
+                .expect("can't allocate notification");
+        }
+
+        (slot_index, cnode_index, raw_slot_index)
+    }
 }
 
 /// Allocate cap with Generic definition.
 pub(crate) fn alloc_cap<C: AllocateCapBluePrint + CapType>() -> sel4::LocalCPtr<C> {
     let mut allocator = OBJ_ALLOCATOR.lock();
-    let slot_index = allocator.empty_slots.next().unwrap();
+    // let slot_index = allocator.empty_slots.next().unwrap();
+    let (slot_index, cnode_index, raw) = allocator.alloc_slot();
     if let Some(ref blue_print) = C::get_blueprint() {
         allocator
             .ut
             .untyped_retype(
                 blue_print,
-                &BootInfo::init_thread_cnode().relative_self(),
+                &BootInfo::init_thread_cnode().relative_bits_with_depth(cnode_index as _, 52),
                 slot_index,
                 1,
             )
             .expect("can't allocate notification");
     }
-    sel4::BootInfo::init_cspace_local_cptr::<C>(slot_index)
+    sel4::BootInfo::init_cspace_local_cptr::<C>(raw)
 }
 
 /// Allocate cap with Generic definition and size_bits;
 pub(crate) fn alloc_cap_size<C: AllocateCapBluePrintSized + CapType>(
+    size_bits: usize,
+) -> sel4::LocalCPtr<C> {
+    let mut allocator = OBJ_ALLOCATOR.lock();
+    // let slot_index = allocator.empty_slots.next().unwrap();
+    let (slot_index, cnode_index, raw) = allocator.alloc_slot();
+    allocator
+        .ut
+        .untyped_retype(
+            &C::get_blueprint(size_bits),
+            &BootInfo::init_thread_cnode().relative_bits_with_depth(cnode_index as _, 52),
+            slot_index,
+            1,
+        )
+        .expect("can't allocate notification");
+    sel4::BootInfo::init_cspace_local_cptr::<C>(raw)
+}
+
+/// Allocate cap with Generic definition and size_bits;
+pub(crate) fn alloc_cap_size_slot<C: AllocateCapBluePrintSized + CapType>(
     size_bits: usize,
 ) -> sel4::LocalCPtr<C> {
     let mut allocator = OBJ_ALLOCATOR.lock();
