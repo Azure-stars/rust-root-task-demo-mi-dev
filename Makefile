@@ -75,7 +75,7 @@ $(app_intermediate):
 			--target-dir $(abspath $(build_dir)/target) \
 			--out-dir $(build_dir) \
 			--release \
-			-p kernel-thread -p blk-thread
+			-p kernel-thread -p blk-thread -p byteos
 	SEL4_PREFIX=$(sel4_prefix) \
 		cargo build \
 			-Z build-std=core,alloc,compiler_builtins \

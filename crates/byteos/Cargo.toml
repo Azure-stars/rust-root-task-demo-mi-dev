@@ -1,0 +1,38 @@
+[package]
+name = "byteos"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[features]
+
+[dependencies]
+allocator = { git = "https://github.com/Byte-OS/allocator.git", rev = "c6ce949146d5feab1d406502b19b035f5d392c35"}
+frame_allocator = { git = "https://github.com/Byte-OS/bit_frame_allocator.git" }
+log = "0.4"
+devices = { git = "https://github.com/Byte-OS/devices.git" }
+hal = { git = "https://github.com/Byte-OS/hal.git" }
+fs = { git = "https://github.com/Byte-OS/fs.git" }
+fdt = "0.1.5"
+executor = { git = "https://github.com/Byte-OS/executor.git" }
+xmas-elf = "0.9.0"
+sync = { git = "https://github.com/Byte-OS/sync.git" }
+bitflags = "2.0.2"
+signal = { git = "https://github.com/Byte-OS/signal.git" }
+bit_field = "0.10.1"
+lose-net-stack = { git = "https://github.com/byte-os/lose-net-stack", rev = "bb99460", features = ["log"]}
+# lose-net-stack = { path = "../../lose-net-stack", features = ["log"]}
+vfscore = { git = "https://github.com/Byte-OS/vfscore.git" }
+async-recursion = "1.1.0"
+futures-lite = { version = "1.13.0", default-features = false, features=["alloc"] }
+# backtrace = { path = "../crates/backtrace" }
+hashbrown = "0.14"
+cfg-if = "1.0.0"
+
+num-traits = { version = "0.2", default-features = false}
+num-derive = "0.4"
+
+# Sel4 Dependencies
+sel4 = { git = "https://github.com/rel4team/rust-sel4", branch = "mi_dev" }
+sel4-panicking = { git = "https://github.com/rel4team/rust-sel4", branch = "mi_dev" }
+sel4-panicking-env = { git = "https://github.com/rel4team/rust-sel4", branch = "mi_dev" }
