@@ -29,6 +29,10 @@ sel4_prefix := $(SEL4_INSTALL_DIR)
 else ifeq ($(KERNEL), rel4)
 sel4_prefix := /opt/reL4
 endif
+
+qemu_args += -drive file=mount.img,if=none,format=raw,id=x0
+qemu_args += -device virtio-blk-device,drive=x0
+
 # Kernel loader binary artifacts provided by Docker container:
 # - `sel4-kernel-loader`: The loader binary, which expects to have a payload appended later via
 #   binary patch.
@@ -96,6 +100,10 @@ run: $(image)
 debug: $(image)
 	$(qemu_cmd) -s -S
 	rm $(image)
+
+fdt:
+	@qemu-system-aarch64 -M 128m -machine virt,dumpdtb=virt.out
+	fdtdump virt.out
 
 .PHONY: test
 test: test.py $(image)

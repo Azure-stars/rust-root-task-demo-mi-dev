@@ -10,3 +10,4 @@
 /kernel/
 /qemu.log
 /1.log
+*.img

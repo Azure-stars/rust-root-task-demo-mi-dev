@@ -18,11 +18,12 @@ mod utils;
 
 use alloc::vec::Vec;
 use alloc_helper::defind_allocator;
-use common::{AlignedPage, RootMessageLabel};
+use common::{AlignedPage, RootMessageLabel, VIRTIO_MMIO_ADDR};
+use include_bytes_aligned::include_bytes_aligned;
 use obj_allocator::{alloc_cap, alloc_cap_size, alloc_cap_size_slot, OBJ_ALLOCATOR};
 use sel4::{
-    cap_type, debug_println, reply, with_ipc_buffer_mut, BootInfo, CNode, CNodeCapData, CapRights,
-    MessageInfo, UntypedDesc,
+    cap_type, debug_println, reply, with_ipc_buffer, with_ipc_buffer_mut, BootInfo, CNode,
+    CNodeCapData, CapRights, Endpoint, MessageInfo, ObjectBlueprintArm, UntypedDesc, VMAttributes,
 };
 use sel4_root_task::root_task;
 use task::Sel4Task;
@@ -49,9 +50,9 @@ pub fn page_seat_vaddr() -> usize {
 /// The radix bits of the cnode in the task.
 const CNODE_RADIX_BITS: usize = 12;
 
-const TASK_FILES: &[&[u8]] = &[
-    include_bytes!("../../../build/kernel-thread.elf"),
-    include_bytes!("../../../build/blk-thread.elf"),
+static TASK_FILES: &[&[u8]] = &[
+    include_bytes_aligned!(16, "../../../build/kernel-thread.elf"),
+    include_bytes_aligned!(16, "../../../build/blk-thread.elf"),
 ];
 
 #[root_task]
@@ -90,6 +91,164 @@ fn main(bootinfo: &sel4::BootInfo) -> sel4::Result<!> {
         ),
     );
 
+    BootInfo::init_thread_tcb().debug_name(b"root");
+
+    rebuild_vspaces();
+
+    let mut tasks = Vec::new();
+
+    let fault_ep = alloc_cap::<cap_type::Endpoint>();
+
+    // Create kernel-thread and block-thread tasks.
+    for file in TASK_FILES {
+        tasks.push(build_kernel_thread(
+            (fault_ep, tasks.len() as _),
+            ElfFile::new(file).expect("can't map elf file in root_task"),
+        )?);
+    }
+
+    // Transfer a untyped memory to kernel_untyped_memory.
+    tasks[0]
+        .abs_cptr(17 as _)
+        .copy(&utils::abs_cptr(kernel_untyped), CapRights::all())
+        .unwrap();
+
+    // Resume Kernel-Thread Task.
+    tasks[0].tcb.tcb_resume().unwrap();
+
+    // Map device memory to blk-thread task
+    let finded_device_idx = bootinfo
+        .device_untyped_list()
+        .iter()
+        .position(|x| {
+            x.paddr() < VIRTIO_MMIO_ADDR && x.paddr() + (1 << x.size_bits()) > VIRTIO_MMIO_ADDR
+        })
+        .expect("can't find device memory");
+    let device_untyped = BootInfo::init_cspace_local_cptr::<sel4::cap_type::Untyped>(
+        bootinfo.untyped().start + finded_device_idx,
+    );
+
+    let device_frame = {
+        let slot_pos = OBJ_ALLOCATOR.lock().alloc_slot();
+        device_untyped
+            .untyped_retype(
+                &ObjectBlueprintArm::LargePage.into(),
+                &BootInfo::init_thread_cnode().relative_bits_with_depth(slot_pos.1 as _, 52),
+                slot_pos.0,
+                1,
+            )
+            .unwrap();
+        sel4::BootInfo::init_cspace_local_cptr::<cap_type::LargePage>(slot_pos.2)
+    };
+    // FIXME: assert device frame area.
+    assert!(device_frame.frame_get_address().unwrap() < VIRTIO_MMIO_ADDR);
+    device_frame
+        .frame_map(
+            tasks[1].vspace,
+            0x1_2000_0000,
+            CapRights::all(),
+            VMAttributes::DEFAULT,
+        )
+        .unwrap();
+
+    // Map buffer frame.
+    tasks[1].map_page(0x1_0000_3000, alloc_cap::<cap_type::Granule>());
+    tasks[1].map_page(0x1_0000_4000, alloc_cap::<cap_type::Granule>());
+
+    // Resumt Block Thread Task.
+    tasks[1].tcb.tcb_resume().unwrap();
+
+    // Waiting for IPC Call.
+    loop {
+        let (message, badge) = fault_ep.recv(());
+
+        if let Some(info) = RootMessageLabel::try_from(&message) {
+            match info {
+                RootMessageLabel::RegisterIRQ(irq_handler, irq_num) => {
+                    BootInfo::irq_control()
+                        .irq_control_get(irq_num, &tasks[badge as usize].abs_cptr(irq_handler))
+                        .unwrap();
+
+                    // Reply message
+                    with_ipc_buffer_mut(|buffer| {
+                        reply(buffer, MessageInfo::new(0, 0, 0, 0));
+                    });
+                }
+                RootMessageLabel::TranslateAddr(addr) => {
+                    let phys_addr = tasks[badge as usize]
+                        .mapped_page
+                        .get(&(addr / 0x1000 * 0x1000));
+                    let message = RootMessageLabel::TranslateAddr(
+                        phys_addr.unwrap().frame_get_address().unwrap() + addr % 0x1000,
+                    )
+                    .build();
+                    with_ipc_buffer_mut(|buffer| reply(buffer, message));
+                }
+            }
+        } else {
+            let fault = with_ipc_buffer(|buffer| sel4::Fault::new(buffer, &message));
+            debug_println!("fault {:#x?}", fault)
+        }
+    }
+
+    // Stop Root Task.
+    // sel4::BootInfo::init_thread_tcb().tcb_suspend()?;
+    // unreachable!()
+}
+
+fn build_kernel_thread(fault_ep: (Endpoint, u64), elf_file: ElfFile) -> sel4::Result<Sel4Task> {
+    let cnode = alloc_cap_size::<cap_type::CNode>(CNODE_RADIX_BITS);
+    let inner_cnode = alloc_cap_size::<cap_type::CNode>(CNODE_RADIX_BITS);
+    let tcb = alloc_cap::<cap_type::TCB>();
+    let vspace = alloc_cap::<cap_type::VSpace>();
+
+    // Build 2 level CSpace.
+    // | unused (40 bits) | Level1 (12 bits) | Level0 (12 bits) |
+    cnode
+        .relative_bits_with_depth(0, CNODE_RADIX_BITS)
+        .mutate(
+            &abs_cptr(inner_cnode),
+            CNodeCapData::skip(0).into_word() as _,
+        )
+        .unwrap();
+    abs_cptr(BootInfo::null())
+        .mutate(
+            &abs_cptr(cnode),
+            CNodeCapData::skip_high_bits(2 * CNODE_RADIX_BITS).into_word() as _,
+        )
+        .unwrap();
+    abs_cptr(cnode)
+        .mutate(
+            &abs_cptr(BootInfo::null()),
+            CNodeCapData::skip_high_bits(2 * CNODE_RADIX_BITS).into_word() as _,
+        )
+        .unwrap();
+
+    BootInfo::init_thread_asid_pool()
+        .asid_pool_assign(vspace)
+        .unwrap();
+
+    let mut task = Sel4Task::new(tcb, cnode, fault_ep.0, vspace, fault_ep.1);
+
+    // Configure Root Task
+    task.configure(2 * CNODE_RADIX_BITS)?;
+
+    // Map stack for the task.
+    task.map_stack(10);
+
+    // set task priority and max control priority
+    task.tcb
+        .tcb_set_sched_params(sel4::BootInfo::init_thread_tcb(), 255, 255)?;
+
+    // Map elf file for the task.
+    task.map_elf(elf_file);
+
+    Ok(task)
+}
+
+/// The default cspace is 12 bits, has 1024 slots. But it is not enough,
+/// rebuild to 2 level 24 bits in the here.
+fn rebuild_vspaces() {
     let cnode = alloc_cap_size_slot::<cap_type::CNode>(CNODE_RADIX_BITS);
 
     cnode
@@ -101,7 +260,6 @@ fn main(bootinfo: &sel4::BootInfo) -> sel4::Result<!> {
         )
         .unwrap();
 
-    BootInfo::init_thread_tcb().debug_name(b"root");
     // Load
     BootInfo::init_thread_cnode()
         .relative(BootInfo::null())
@@ -135,86 +293,4 @@ fn main(bootinfo: &sel4::BootInfo) -> sel4::Result<!> {
             0,
         )
     });
-
-    let cnode = alloc_cap_size::<cap_type::CNode>(CNODE_RADIX_BITS);
-    let inner_cnode = alloc_cap_size::<cap_type::CNode>(CNODE_RADIX_BITS);
-    let tcb = alloc_cap::<cap_type::TCB>();
-    let vspace = alloc_cap::<cap_type::VSpace>();
-    let fault_ep = alloc_cap::<cap_type::Endpoint>();
-    cnode
-        .relative_bits_with_depth(0, CNODE_RADIX_BITS)
-        .mutate(
-            &abs_cptr(inner_cnode),
-            CNodeCapData::skip(0).into_word() as _,
-        )
-        .unwrap();
-    abs_cptr(BootInfo::null())
-        .mutate(
-            &abs_cptr(cnode),
-            CNodeCapData::skip_high_bits(2 * CNODE_RADIX_BITS).into_word() as _,
-        )
-        .unwrap();
-    abs_cptr(cnode)
-        .mint(
-            &abs_cptr(BootInfo::null()),
-            CapRights::all(),
-            CNodeCapData::skip_high_bits(2 * CNODE_RADIX_BITS).into_word() as _,
-        )
-        .unwrap();
-
-    BootInfo::init_thread_asid_pool()
-        .asid_pool_assign(vspace)
-        .unwrap();
-    let mut task = Sel4Task::new(tcb, cnode, fault_ep, vspace);
-
-    // Configure Root Task
-    task.configure(2 * CNODE_RADIX_BITS)?;
-
-    // Map stack for the task.
-    task.map_stack(10);
-
-    // set task priority and max control priority
-    task.tcb
-        .tcb_set_sched_params(sel4::BootInfo::init_thread_tcb(), 255, 255)?;
-
-    // Map elf file for the task.
-    task.map_elf(ElfFile::new(TASK_FILES[0]).expect("can't map elf file in root_task"));
-
-    // Transfer a untyped memory to kernel_untyped_memory.
-    task.abs_cptr(17 as _)
-        .copy(&utils::abs_cptr(kernel_untyped), CapRights::all())
-        .unwrap();
-
-    // Resume Kernel-Thread Task.
-    task.tcb.tcb_resume().unwrap();
-
-    // Waiting for IPC Call.
-    loop {
-        let (message, _badge) = fault_ep.recv(());
-        debug_println!("received message: {:#x?}, badge: {}", message, _badge);
-
-        // let (irq_handler, irq_num) = with_ipc_buffer(|buffer| {
-        //     assert_eq!(message.label(), 2 * size_of::<u64>() as u64);
-        //     let regs = buffer.msg_regs();
-        //     (regs[0], regs[1])
-        // });
-        if let Some(info) = RootMessageLabel::try_from(&message) {
-            match info {
-                RootMessageLabel::RegisterIRQ(irq_handler, irq_num) => {
-                    BootInfo::irq_control()
-                        .irq_control_get(irq_num, &task.abs_cptr(irq_handler))
-                        .unwrap();
-
-                    // Reply message
-                    with_ipc_buffer_mut(|buffer| {
-                        reply(buffer, MessageInfo::new(0, 0, 0, 0));
-                    });
-                }
-            }
-        }
-    }
-
-    // Stop Root Task.
-    // sel4::BootInfo::init_thread_tcb().tcb_suspend()?;
-    // unreachable!()
 }

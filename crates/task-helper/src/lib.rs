@@ -57,6 +57,7 @@ impl<H: TaskHelperTrait<Self>> Sel4TaskHelper<H> {
         cnode: sel4::CNode,
         fault_ep: sel4::Endpoint,
         vspace: sel4::VSpace,
+        badge: u64,
     ) -> Self {
         let task = Self {
             tcb,
@@ -70,7 +71,7 @@ impl<H: TaskHelperTrait<Self>> Sel4TaskHelper<H> {
 
         // Move Fault EP to child process
         task.abs_cptr(18 as _)
-            .mint(&init_abs_cptr(fault_ep), CapRights::all(), 1)
+            .mint(&init_abs_cptr(fault_ep), CapRights::all(), badge)
             .unwrap();
 
         // Copy ASIDPool to the task, children can assign another children.

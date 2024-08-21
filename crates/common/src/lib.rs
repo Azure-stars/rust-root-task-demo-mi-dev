@@ -4,6 +4,9 @@ use core::cell::UnsafeCell;
 
 use sel4::{with_ipc_buffer, with_ipc_buffer_mut, CPtrBits, MessageInfo, GRANULE_SIZE};
 
+// FIXME: Make this variable more generic.
+pub const VIRTIO_MMIO_ADDR: usize = 0xa003e00;
+
 /// Custom Message Label for transfer between tasks.
 #[repr(usize)]
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -39,9 +42,10 @@ impl CustomMessageLabel {
 }
 
 #[repr(usize)]
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum RootMessageLabel {
     RegisterIRQ(CPtrBits, u64),
+    TranslateAddr(usize),
 }
 
 impl RootMessageLabel {
@@ -59,6 +63,7 @@ impl RootMessageLabel {
             let regs = buffer.msg_regs();
             match label {
                 0x0 => Some(Self::RegisterIRQ(regs[0], regs[1])),
+                0x1 => Some(Self::TranslateAddr(regs[0] as _)),
                 _ => None,
             }
         })
@@ -67,6 +72,7 @@ impl RootMessageLabel {
     pub fn to_label(&self) -> u64 {
         let n = match self {
             Self::RegisterIRQ(_, _) => 0,
+            Self::TranslateAddr(_) => 1,
         };
         Self::LABEL_START + n
     }
@@ -83,6 +89,10 @@ impl RootMessageLabel {
                 regs[0] = *irq_handler;
                 regs[1] = *irq_num;
                 msg_size = 2 * REG_SIZE;
+            }
+            Self::TranslateAddr(addr) => {
+                buffer.msg_regs_mut()[0] = *addr as _;
+                msg_size = REG_SIZE;
             }
         });
 
