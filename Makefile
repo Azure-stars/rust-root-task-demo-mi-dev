@@ -65,7 +65,8 @@ $(app_intermediate):
 			--target $(TARGET) \
 			--target-dir $(abspath $(build_dir)/target) \
 			--out-dir $(build_dir) \
-			-p shim-comp -p kernel-thread -p blk-thread
+			--release \
+			-p shim-comp
 	SEL4_PREFIX=$(sel4_prefix) \
 		cargo build \
 			-Z build-std=core,alloc,compiler_builtins \
@@ -73,6 +74,16 @@ $(app_intermediate):
 			--target $(TARGET) \
 			--target-dir $(abspath $(build_dir)/target) \
 			--out-dir $(build_dir) \
+			--release \
+			-p kernel-thread -p blk-thread
+	SEL4_PREFIX=$(sel4_prefix) \
+		cargo build \
+			-Z build-std=core,alloc,compiler_builtins \
+			-Z build-std-features=compiler-builtins-mem \
+			--target $(TARGET) \
+			--target-dir $(abspath $(build_dir)/target) \
+			--out-dir $(build_dir) \
+			--release \
 			-p $(app_crate)
 	
 

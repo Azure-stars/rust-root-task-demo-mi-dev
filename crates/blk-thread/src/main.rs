@@ -10,9 +10,10 @@ mod virtio_impl;
 use core::ptr::NonNull;
 
 use alloc_helper::defind_allocator;
-use sel4::{debug_println, set_ipc_buffer, IPCBuffer};
+use common::RootMessageLabel;
+use sel4::{cap_type, debug_println, set_ipc_buffer, IPCBuffer, IRQHandler, LocalCPtr, Notification};
 use virtio_drivers::{
-    device::blk::VirtIOBlk,
+    device::blk::{BlkReq, BlkResp, VirtIOBlk},
     transport::mmio::{MmioTransport, VirtIOHeader},
 };
 use virtio_impl::HalImpl;
@@ -34,6 +35,8 @@ defind_allocator! {
     (GLOBAL_ALLOCATOR, DEFAULT_ALLOCATOR_SIZE)
 }
 
+const VIRTIO_NET_IRQ: usize = 0x2f + 0x20;
+
 #[export_name = "_start"]
 fn main(ipc_buffer: IPCBuffer) -> sel4::Result<!> {
     set_ipc_buffer(ipc_buffer);
@@ -46,11 +49,58 @@ fn main(ipc_buffer: IPCBuffer) -> sel4::Result<!> {
 
     debug_println!("[Blk Thread] Block device capacity: {:#x}", virtio_blk.capacity());
 
+    let mut request = BlkReq::default();
+    let mut resp = BlkResp::default();
+    let mut token = 0;
     let mut buffer = [0u8; 512];
-    virtio_blk.read_blocks(0, &mut buffer).unwrap();
+
+    // Register interrupt handler and notification
+    let irq_handler = IRQHandler::from_bits(20);
+    let irq_notify = Notification::from_bits(19);
+    let ep = LocalCPtr::<cap_type::Endpoint>::from_bits(18);
+
+    ep.call(RootMessageLabel::RegisterIRQ(irq_handler.bits(), VIRTIO_NET_IRQ as _).build());
+
+    irq_handler
+        .irq_handler_set_notification(irq_notify)
+        .unwrap();
+
+    irq_handler.irq_handler_ack().unwrap();
+
+    // Read block device
+    token = unsafe {
+        virtio_blk.read_blocks_nb(0, &mut request, &mut buffer, &mut resp)
+            .unwrap()
+    };
+
+    debug_println!("[Blk Thread] Waiting for VIRTIO Net IRQ notification");
+    irq_notify.wait();
+    irq_handler.irq_handler_ack().unwrap();
+    virtio_blk.ack_interrupt();
+    debug_println!("[Blk Thread] Received for VIRTIO Net IRQ notification");
 
     debug_println!("[Blk Thread] Read done");
-    debug_println!("[Blk Thread] Data 0..4: {:#x?}", &buffer[0..4]);
+    debug_println!("[Blk Thread] Data 0..4: {:?}", &buffer[0..4]);
+
+    debug_println!();
+
+    // Read block device
+    token = unsafe {
+        virtio_blk.read_blocks_nb(1, &mut request, &mut buffer, &mut resp)
+            .unwrap()
+    };
+
+    debug_println!("[Blk Thread] Waiting for VIRTIO Net IRQ notification");
+    irq_notify.wait();
+    irq_handler.irq_handler_ack().unwrap();
+    virtio_blk.ack_interrupt();
+    debug_println!("[Blk Thread] Received for VIRTIO Net IRQ notification");
+
+
+    // virtio_blk.read_blocks(0, &mut buffer).unwrap();
+
+    debug_println!("[Blk Thread] Read done");
+    debug_println!("[Blk Thread] Data 0..4: {:?}", &buffer[0..4]);
 
     sel4::BootInfo::init_thread_tcb().tcb_suspend()?;
     unreachable!()

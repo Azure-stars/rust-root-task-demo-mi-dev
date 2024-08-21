@@ -116,6 +116,11 @@ fn main(bootinfo: &sel4::BootInfo) -> sel4::Result<!> {
     // Resume Kernel-Thread Task.
     tasks[0].tcb.tcb_resume().unwrap();
 
+    // Copy Notifications
+    let net_irq_not = alloc_cap::<cap_type::Notification>();
+    tasks[1].abs_cptr(19).copy(&utils::abs_cptr(net_irq_not), CapRights::all())
+        .unwrap();
+
     // Map device memory to blk-thread task
     let finded_device_idx = bootinfo
         .device_untyped_list()
@@ -140,6 +145,7 @@ fn main(bootinfo: &sel4::BootInfo) -> sel4::Result<!> {
             .unwrap();
         sel4::BootInfo::init_cspace_local_cptr::<cap_type::LargePage>(slot_pos.2)
     };
+    
     // FIXME: assert device frame area.
     assert!(device_frame.frame_get_address().unwrap() < VIRTIO_MMIO_ADDR);
     device_frame
