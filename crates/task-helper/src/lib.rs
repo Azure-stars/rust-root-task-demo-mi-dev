@@ -3,14 +3,31 @@
 
 use core::{cmp, marker::PhantomData};
 
-use alloc::{collections::btree_map::BTreeMap, vec::Vec};
+use alloc::{collections::btree_map::BTreeMap, sync::Arc, vec::Vec};
+use crate_consts::{DEFAULT_THREAD_FAULT_EP, DEFAULT_THREAD_NOTIFICATION};
 use sel4::{
-    cap_type, sys, AbsoluteCPtr, BootInfo, CNodeCapData, CPtr, CPtrBits, CapRights, Error, Granule,
-    HasCPtrWithDepth, LocalCPtr, VMAttributes,
+    sys, AbsoluteCPtr, BootInfo, CNodeCapData, CPtr, CPtrBits, CapRights, Error, Granule,
+    HasCPtrWithDepth, Notification, Null, VMAttributes,
 };
+use sel4_sync::{lock_api::Mutex, MutexSyncOpsWithNotification};
 use xmas_elf::{program, ElfFile};
 
 extern crate alloc;
+
+/// Thread Notifications implementation
+pub struct ThreadNotification;
+
+/// Implement [MutexSyncOpsWithNotification] for [ThreadNotification]
+/// Get the notification in the specificed thread slot.
+impl MutexSyncOpsWithNotification for ThreadNotification {
+    fn notification(&self) -> Notification {
+        Notification::from_bits(DEFAULT_THREAD_NOTIFICATION)
+    }
+}
+
+/// Mutex with Notification.
+// pub type NotiMutex<T> = Mutex<GenericRawMutex<ThreadNotification>, T>;
+pub type NotiMutex<T> = Mutex<spin::Mutex<()>, T>;
 
 /// The size of the page [sel4::GRANULE_SIZE].
 const PAGE_SIZE: usize = sel4::GRANULE_SIZE.bytes();
@@ -45,7 +62,7 @@ pub struct Sel4TaskHelper<H: TaskHelperTrait<Self>> {
     pub tcb: sel4::TCB,
     pub cnode: sel4::CNode,
     pub vspace: sel4::VSpace,
-    pub mapped_pt: Vec<sel4::PT>,
+    pub mapped_pt: Arc<NotiMutex<Vec<sel4::PT>>>,
     pub mapped_page: BTreeMap<usize, sel4::Granule>,
     pub stack_bottom: usize,
     pub phantom: PhantomData<H>,
@@ -63,14 +80,14 @@ impl<H: TaskHelperTrait<Self>> Sel4TaskHelper<H> {
             tcb,
             cnode,
             vspace,
-            mapped_pt: Vec::new(),
+            mapped_pt: Arc::new(Mutex::new(Vec::new())),
             mapped_page: BTreeMap::new(),
             stack_bottom: H::DEFAULT_STACK_TOP,
             phantom: PhantomData,
         };
 
         // Move Fault EP to child process
-        task.abs_cptr(18 as _)
+        task.abs_cptr(DEFAULT_THREAD_FAULT_EP)
             .mint(&init_abs_cptr(fault_ep), CapRights::all(), badge)
             .unwrap();
 
@@ -111,7 +128,7 @@ impl<H: TaskHelperTrait<Self>> Sel4TaskHelper<H> {
                     pt_cap
                         .pt_map(self.vspace, vaddr, VMAttributes::DEFAULT)
                         .unwrap();
-                    self.mapped_pt.push(pt_cap);
+                    self.mapped_pt.lock().push(pt_cap);
                 }
                 _ => res.unwrap(),
             }
@@ -237,8 +254,7 @@ impl<H: TaskHelperTrait<Self>> Sel4TaskHelper<H> {
 
         // Configure the tcb structure
         self.tcb.tcb_configure(
-            // TODO: make this in a constant
-            CPtr::from_bits(18),
+            CPtr::from_bits(DEFAULT_THREAD_FAULT_EP),
             self.cnode,
             CNodeCapData::skip_high_bits(radix_bits),
             self.vspace,
@@ -259,9 +275,20 @@ impl<H: TaskHelperTrait<Self>> Sel4TaskHelper<H> {
     /// Get the the absolute cptr related to task's cnode through cptr_bits.
     pub fn abs_cptr(&self, cptr_bits: CPtrBits) -> AbsoluteCPtr {
         self.cnode
-            .relative(LocalCPtr::<cap_type::Null>::from_cptr(CPtr::from_bits(
-                cptr_bits,
-            )))
+            .relative(Null::from_cptr(CPtr::from_bits(cptr_bits)))
+    }
+
+    /// Clone a new thread from the current thread.
+    pub fn clone_thread(&self, tcb: sel4::TCB) -> Self {
+        Self {
+            tcb,
+            cnode: self.cnode,
+            vspace: self.vspace,
+            mapped_pt: self.mapped_pt.clone(),
+            mapped_page: self.mapped_page.clone(),
+            stack_bottom: self.stack_bottom,
+            phantom: PhantomData,
+        }
     }
 }
 

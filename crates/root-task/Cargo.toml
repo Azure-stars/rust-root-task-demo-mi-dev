@@ -7,6 +7,7 @@ edition = "2021"
 
 [dependencies]
 alloc-helper = { path = "../alloc-helper" }
+crate-consts = { path = "../crate-consts" }
 sel4 = { git = "https://github.com/rel4team/rust-sel4", branch = "mi_dev" }
 sel4-root-task = { git = "https://github.com/rel4team/rust-sel4", branch = "mi_dev" }
 sel4-initialize-tls-on-stack = { git = "https://github.com/rel4team/rust-sel4", branch = "mi_dev" }

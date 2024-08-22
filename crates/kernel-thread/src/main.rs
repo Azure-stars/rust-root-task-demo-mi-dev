@@ -15,6 +15,7 @@ mod task;
 mod utils;
 use core::fmt;
 
+use crate_consts::{DEFAULT_CUSTOM_SLOT, DEFAULT_EMPTY_SLOT_INDEX};
 use log::{Level, Record};
 use object_allocator::{alloc_cap, OBJ_ALLOCATOR};
 use sel4::{cap_type, debug_println, set_ipc_buffer, IPCBuffer, LocalCPtr};
@@ -98,9 +99,10 @@ fn main(ipc_buffer: IPCBuffer) -> sel4::Result<!> {
     // sel4::debug_snapshot();
 
     // TODO: Init ObjAllocator
-    OBJ_ALLOCATOR
-        .lock()
-        .init(19..1023, LocalCPtr::from_bits(17usize as _));
+    OBJ_ALLOCATOR.lock().init(
+        DEFAULT_EMPTY_SLOT_INDEX..1023,
+        LocalCPtr::from_bits(DEFAULT_CUSTOM_SLOT as _),
+    );
 
     test_func!("Test IRQ", irq_test::test_irq());
 

@@ -11,7 +11,10 @@ use core::ptr::NonNull;
 
 use alloc_helper::defind_allocator;
 use common::RootMessageLabel;
-use sel4::{cap_type, debug_println, set_ipc_buffer, IPCBuffer, IRQHandler, LocalCPtr, Notification};
+use crate_consts::DEFAULT_CUSTOM_SLOT;
+use sel4::{
+    cap_type, debug_println, set_ipc_buffer, IPCBuffer, IRQHandler, LocalCPtr, Notification,
+};
 use virtio_drivers::{
     device::blk::{BlkReq, BlkResp, VirtIOBlk},
     transport::mmio::{MmioTransport, VirtIOHeader},
@@ -47,16 +50,18 @@ fn main(ipc_buffer: IPCBuffer) -> sel4::Result<!> {
     })
     .expect("failed to create blk driver");
 
-    debug_println!("[Blk Thread] Block device capacity: {:#x}", virtio_blk.capacity());
+    debug_println!(
+        "[Blk Thread] Block device capacity: {:#x}",
+        virtio_blk.capacity()
+    );
 
     let mut request = BlkReq::default();
     let mut resp = BlkResp::default();
-    let mut token = 0;
     let mut buffer = [0u8; 512];
 
     // Register interrupt handler and notification
-    let irq_handler = IRQHandler::from_bits(20);
-    let irq_notify = Notification::from_bits(19);
+    let irq_notify = Notification::from_bits(DEFAULT_CUSTOM_SLOT);
+    let irq_handler = IRQHandler::from_bits(DEFAULT_CUSTOM_SLOT + 1);
     let ep = LocalCPtr::<cap_type::Endpoint>::from_bits(18);
 
     ep.call(RootMessageLabel::RegisterIRQ(irq_handler.bits(), VIRTIO_NET_IRQ as _).build());
@@ -68,8 +73,9 @@ fn main(ipc_buffer: IPCBuffer) -> sel4::Result<!> {
     irq_handler.irq_handler_ack().unwrap();
 
     // Read block device
-    token = unsafe {
-        virtio_blk.read_blocks_nb(0, &mut request, &mut buffer, &mut resp)
+    unsafe {
+        virtio_blk
+            .read_blocks_nb(0, &mut request, &mut buffer, &mut resp)
             .unwrap()
     };
 
@@ -85,8 +91,9 @@ fn main(ipc_buffer: IPCBuffer) -> sel4::Result<!> {
     debug_println!();
 
     // Read block device
-    token = unsafe {
-        virtio_blk.read_blocks_nb(1, &mut request, &mut buffer, &mut resp)
+    unsafe {
+        virtio_blk
+            .read_blocks_nb(1, &mut request, &mut buffer, &mut resp)
             .unwrap()
     };
 
@@ -95,7 +102,6 @@ fn main(ipc_buffer: IPCBuffer) -> sel4::Result<!> {
     irq_handler.irq_handler_ack().unwrap();
     virtio_blk.ack_interrupt();
     debug_println!("[Blk Thread] Received for VIRTIO Net IRQ notification");
-
 
     // virtio_blk.read_blocks(0, &mut buffer).unwrap();
 

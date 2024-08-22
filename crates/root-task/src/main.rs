@@ -19,6 +19,7 @@ mod utils;
 use alloc::vec::Vec;
 use alloc_helper::defind_allocator;
 use common::{AlignedPage, RootMessageLabel, VIRTIO_MMIO_ADDR};
+use crate_consts::DEFAULT_CUSTOM_SLOT;
 use include_bytes_aligned::include_bytes_aligned;
 use obj_allocator::{alloc_cap, alloc_cap_size, alloc_cap_size_slot, OBJ_ALLOCATOR};
 use sel4::{
@@ -109,16 +110,18 @@ fn main(bootinfo: &sel4::BootInfo) -> sel4::Result<!> {
 
     // Transfer a untyped memory to kernel_untyped_memory.
     tasks[0]
-        .abs_cptr(17 as _)
+        .abs_cptr(DEFAULT_CUSTOM_SLOT)
         .copy(&utils::abs_cptr(kernel_untyped), CapRights::all())
         .unwrap();
 
     // Resume Kernel-Thread Task.
     tasks[0].tcb.tcb_resume().unwrap();
 
-    // Copy Notifications
+    // Set Notification for Blk-Thread Task.
     let net_irq_not = alloc_cap::<cap_type::Notification>();
-    tasks[1].abs_cptr(19).copy(&utils::abs_cptr(net_irq_not), CapRights::all())
+    tasks[1]
+        .abs_cptr(DEFAULT_CUSTOM_SLOT)
+        .copy(&utils::abs_cptr(net_irq_not), CapRights::all())
         .unwrap();
 
     // Map device memory to blk-thread task
@@ -145,7 +148,7 @@ fn main(bootinfo: &sel4::BootInfo) -> sel4::Result<!> {
             .unwrap();
         sel4::BootInfo::init_cspace_local_cptr::<cap_type::LargePage>(slot_pos.2)
     };
-    
+
     // FIXME: assert device frame area.
     assert!(device_frame.frame_get_address().unwrap() < VIRTIO_MMIO_ADDR);
     device_frame

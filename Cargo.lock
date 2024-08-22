@@ -60,6 +60,7 @@ dependencies = [
  "alloc-helper",
  "buddy_system_allocator",
  "common",
+ "crate-consts",
  "log",
  "sel4",
  "sel4-logging",
@@ -134,6 +135,10 @@ checksum = "ce420fe07aecd3e67c5f910618fe65e94158f6dcc0adf44e00d69ce2bdfe0fd0"
 dependencies = [
  "libc",
 ]
+
+[[package]]
+name = "crate-consts"
+version = "0.1.0"
 
 [[package]]
 name = "crypto-common"
@@ -237,6 +242,7 @@ version = "0.1.0"
 dependencies = [
  "alloc-helper",
  "common",
+ "crate-consts",
  "log",
  "sel4",
  "sel4-initialize-tls-on-stack",
@@ -442,6 +448,7 @@ dependencies = [
  "alloc-helper",
  "buddy_system_allocator",
  "common",
+ "crate-consts",
  "include_bytes_aligned",
  "sel4",
  "sel4-initialize-tls-on-stack",
@@ -781,7 +788,10 @@ checksum = "43d0e35dc7d73976a53c7e6d7d177ef804a0c0ee774ec77bcc520c2216fd7cbe"
 name = "task-helper"
 version = "0.1.0"
 dependencies = [
+ "crate-consts",
  "sel4",
+ "sel4-sync",
+ "spin",
  "xmas-elf",
 ]
 
