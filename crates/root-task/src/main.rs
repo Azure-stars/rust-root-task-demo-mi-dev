@@ -24,7 +24,8 @@ use include_bytes_aligned::include_bytes_aligned;
 use obj_allocator::{alloc_cap, alloc_cap_size, alloc_cap_size_slot, OBJ_ALLOCATOR};
 use sel4::{
     cap_type, debug_println, reply, with_ipc_buffer, with_ipc_buffer_mut, BootInfo, CNode,
-    CNodeCapData, CapRights, Endpoint, MessageInfo, ObjectBlueprintArm, UntypedDesc, VMAttributes,
+    CNodeCapData, CapRights, Endpoint, LargePage, MessageInfo, ObjectBlueprintArm, UntypedDesc,
+    VMAttributes,
 };
 use sel4_root_task::root_task;
 use task::Sel4Task;
@@ -54,6 +55,7 @@ const CNODE_RADIX_BITS: usize = 12;
 static TASK_FILES: &[&[u8]] = &[
     include_bytes_aligned!(16, "../../../build/kernel-thread.elf"),
     include_bytes_aligned!(16, "../../../build/blk-thread.elf"),
+    include_bytes_aligned!(16, "../../../build/net-thread.elf"),
 ];
 
 #[root_task]
@@ -160,12 +162,37 @@ fn main(bootinfo: &sel4::BootInfo) -> sel4::Result<!> {
         )
         .unwrap();
 
-    // Map buffer frame.
+    // Map DMA frame.
     tasks[1].map_page(0x1_0000_3000, alloc_cap::<cap_type::Granule>());
     tasks[1].map_page(0x1_0000_4000, alloc_cap::<cap_type::Granule>());
 
     // Resumt Block Thread Task.
-    tasks[1].tcb.tcb_resume().unwrap();
+    let device_slot = OBJ_ALLOCATOR.lock().alloc_slot();
+    abs_cptr(LargePage::from_bits(device_slot.2 as _))
+        .copy(&abs_cptr(device_frame), CapRights::all())
+        .unwrap();
+    LargePage::from_bits(device_slot.2 as _)
+        .frame_map(
+            tasks[2].vspace,
+            0x1_2000_0000,
+            CapRights::all(),
+            VMAttributes::DEFAULT,
+        )
+        .unwrap();
+
+    tasks[2]
+        .abs_cptr(DEFAULT_CUSTOM_SLOT)
+        .copy(
+            &utils::abs_cptr(alloc_cap::<cap_type::Notification>()),
+            CapRights::all(),
+        )
+        .unwrap();
+
+    // Map DMA frame.
+    for i in 0..32 {
+        tasks[2].map_page(0x1_0000_3000 + i * 0x1000, alloc_cap::<cap_type::Granule>());
+    }
+    tasks[2].tcb.tcb_resume().unwrap();
 
     // Waiting for IPC Call.
     loop {

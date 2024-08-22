@@ -16,5 +16,6 @@ members = [
     "crates/shim-comp",
     "crates/task-helper", 
     "crates/blk-thread", 
-    "crates/crate-consts",
+    "crates/crate-consts", 
+    "crates/net-thread",
 ]

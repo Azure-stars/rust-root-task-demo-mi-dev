@@ -33,6 +33,10 @@ endif
 qemu_args += -drive file=mount.img,if=none,format=raw,id=x0
 qemu_args += -device virtio-blk-device,drive=x0
 
+qemu_args += -netdev user,id=net0,hostfwd=tcp::6379-:6379
+qemu_args += -device virtio-net-device,netdev=net0
+qemu_args += -object filter-dump,id=net0,netdev=net0,file=packets.pcap
+
 # Kernel loader binary artifacts provided by Docker container:
 # - `sel4-kernel-loader`: The loader binary, which expects to have a payload appended later via
 #   binary patch.
@@ -75,7 +79,7 @@ $(app_intermediate):
 			--target-dir $(abspath $(build_dir)/target) \
 			--out-dir $(build_dir) \
 			--release \
-			-p kernel-thread -p blk-thread
+			-p kernel-thread -p blk-thread -p net-thread
 	SEL4_PREFIX=$(sel4_prefix) \
 		cargo build \
 			-Z build-std=core,alloc,compiler_builtins \

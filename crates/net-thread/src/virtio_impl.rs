@@ -27,9 +27,12 @@ unsafe impl Hal for HalImpl {
         }
     }
 
-    unsafe fn dma_dealloc(_paddr: PhysAddr, _vaddr: NonNull<u8>, _pages: usize) -> i32 {
-        // D::dealloc(paddr, pages)
-        todo!()
+    unsafe fn dma_dealloc(_paddr: PhysAddr, vaddr: NonNull<u8>, pages: usize) -> i32 {
+        let vaddr = vaddr.as_ptr() as usize;
+        let pre_addr = DMA_ADDR.load(Ordering::Acquire);
+        assert!(vaddr + pages * PAGE_SIZE == pre_addr);
+        DMA_ADDR.store(vaddr, Ordering::Release);
+        0
     }
 
     unsafe fn mmio_phys_to_virt(_paddr: PhysAddr, _size: usize) -> NonNull<u8> {

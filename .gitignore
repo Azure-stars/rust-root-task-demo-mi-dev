@@ -12,3 +12,4 @@
 /1.log
 *.img
 virt.out
+packets.pcap

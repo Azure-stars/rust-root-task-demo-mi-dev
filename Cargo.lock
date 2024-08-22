@@ -318,6 +318,23 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "68354c5c6bd36d73ff3feceb05efa59b6acb7626617f4962be322a825e61f79a"
 
 [[package]]
+name = "net-thread"
+version = "0.1.0"
+dependencies = [
+ "alloc-helper",
+ "buddy_system_allocator",
+ "common",
+ "crate-consts",
+ "log",
+ "sel4",
+ "sel4-logging",
+ "sel4-panicking",
+ "sel4-panicking-env",
+ "spin",
+ "virtio-drivers",
+]
+
+[[package]]
 name = "nom"
 version = "7.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
