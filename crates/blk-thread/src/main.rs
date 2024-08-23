@@ -9,7 +9,7 @@ mod virtio_impl;
 
 use core::ptr::NonNull;
 
-use alloc_helper::defind_allocator;
+use alloc_helper::define_allocator;
 use common::RootMessageLabel;
 use crate_consts::DEFAULT_CUSTOM_SLOT;
 use sel4::{
@@ -32,7 +32,7 @@ const VIRTIO_BLK_ADDR: usize = 0x1_2000_3e00;
 
 /// Default size of the global allocator
 const DEFAULT_ALLOCATOR_SIZE: usize = 0x8000;
-defind_allocator! {
+define_allocator! {
     /// Define a new global allocator
     /// Size is [DEFAULT_ALLOCATOR_SIZE]
     (GLOBAL_ALLOCATOR, DEFAULT_ALLOCATOR_SIZE)

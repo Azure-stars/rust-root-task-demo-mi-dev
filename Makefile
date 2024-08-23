@@ -41,7 +41,11 @@ qemu_args += -object filter-dump,id=net0,netdev=net0,file=packets.pcap
 # - `sel4-kernel-loader`: The loader binary, which expects to have a payload appended later via
 #   binary patch.
 # - `sel4-kernel-loader-add-payload`: CLI which appends a payload to the loader.
+ifeq ($(LOCAL), true)
 loader_artifacts_dir := ./bin
+else
+loader_artifacts_dir := /deps/bin
+endif
 loader := $(loader_artifacts_dir)/sel4-kernel-loader
 loader_cli := $(loader_artifacts_dir)/sel4-kernel-loader-add-payload
 
@@ -63,6 +67,7 @@ $(app): $(app_intermediate)
 .INTERMDIATE: $(app_intermediate)
 $(app_intermediate):
 	SEL4_PREFIX=$(sel4_prefix) \
+	RUSTFLAGS="-Clink-arg=-Tcrates/shim-comp/linker.ld" \
 		cargo build \
 			-Z build-std=core,alloc,compiler_builtins \
 			-Z build-std-features=compiler-builtins-mem \

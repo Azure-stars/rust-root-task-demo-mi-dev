@@ -17,7 +17,7 @@ mod task;
 mod utils;
 
 use alloc::vec::Vec;
-use alloc_helper::defind_allocator;
+use alloc_helper::define_allocator;
 use common::{AlignedPage, RootMessageLabel, VIRTIO_MMIO_ADDR};
 use crate_consts::DEFAULT_CUSTOM_SLOT;
 use include_bytes_aligned::include_bytes_aligned;
@@ -34,7 +34,7 @@ use xmas_elf::ElfFile;
 
 /// Default size of the global allocator
 const DEFAULT_ALLOCATOR_SIZE: usize = 0x1_0000;
-defind_allocator! {
+define_allocator! {
     /// Define a new global allocator
     /// Size is [DEFAULT_ALLOCATOR_SIZE]
     (GLOBAL_ALLOCATOR, DEFAULT_ALLOCATOR_SIZE)
