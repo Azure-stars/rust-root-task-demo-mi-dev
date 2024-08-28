@@ -290,6 +290,11 @@ impl<H: TaskHelperTrait<Self>> Sel4TaskHelper<H> {
             phantom: PhantomData,
         }
     }
+
+    /// Run current task
+    pub fn run(&self) {
+        self.tcb.tcb_resume().unwrap();
+    }
 }
 
 /// Get the the absolute cptr related to current cnode through cptr_bits.

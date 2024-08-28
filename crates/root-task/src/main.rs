@@ -56,6 +56,7 @@ static TASK_FILES: &[&[u8]] = &[
     include_bytes_aligned!(16, "../../../build/kernel-thread.elf"),
     include_bytes_aligned!(16, "../../../build/blk-thread.elf"),
     include_bytes_aligned!(16, "../../../build/net-thread.elf"),
+    // include_bytes_aligned!(16, "../../../build/http-server.elf"),
 ];
 
 #[root_task]
@@ -115,9 +116,6 @@ fn main(bootinfo: &sel4::BootInfo) -> sel4::Result<!> {
         .abs_cptr(DEFAULT_CUSTOM_SLOT)
         .copy(&utils::abs_cptr(kernel_untyped), CapRights::all())
         .unwrap();
-
-    // Resume Kernel-Thread Task.
-    tasks[0].tcb.tcb_resume().unwrap();
 
     // Set Notification for Blk-Thread Task.
     let net_irq_not = alloc_cap::<cap_type::Notification>();
@@ -192,7 +190,9 @@ fn main(bootinfo: &sel4::BootInfo) -> sel4::Result<!> {
     for i in 0..32 {
         tasks[2].map_page(0x1_0000_3000 + i * 0x1000, alloc_cap::<cap_type::Granule>());
     }
-    tasks[2].tcb.tcb_resume().unwrap();
+
+    // Start tasks
+    tasks.iter().for_each(Sel4Task::run);
 
     // Waiting for IPC Call.
     loop {

@@ -2,16 +2,21 @@
 #![no_main]
 #![feature(never_type)]
 
-// extern crate alloc;
+#[macro_use]
+extern crate alloc;
 extern crate sel4_panicking;
 
+mod mime;
+mod run;
+mod server;
+mod smoltcp_impl;
 mod virtio_impl;
 
 use core::ptr::NonNull;
 
 use alloc_helper::define_allocator;
 use common::RootMessageLabel;
-use crate_consts::DEFAULT_CUSTOM_SLOT;
+use crate_consts::{DEFAULT_CUSTOM_SLOT, INIT_EP};
 use sel4::{
     cap_type, debug_println, set_ipc_buffer, IPCBuffer, IRQHandler, LocalCPtr, Notification,
 };
@@ -84,6 +89,9 @@ fn main(ipc_buffer: IPCBuffer) -> sel4::Result<!> {
         virtio_net.mac_address()
     );
 
+    run::async_runtime_entry(virtio_net);
+    // run::run_server(&mut virtio_net);
+    loop {}
     let mut tx_buffer = virtio_net.new_tx_buffer(0x200);
 
     for i in 0..100 {
@@ -93,9 +101,8 @@ fn main(ipc_buffer: IPCBuffer) -> sel4::Result<!> {
     // Register interrupt handler and notification
     let irq_notify = Notification::from_bits(DEFAULT_CUSTOM_SLOT);
     let irq_handler = IRQHandler::from_bits(DEFAULT_CUSTOM_SLOT + 1);
-    let ep = LocalCPtr::<cap_type::Endpoint>::from_bits(18);
 
-    ep.call(RootMessageLabel::RegisterIRQ(irq_handler.bits(), VIRTIO_NET_IRQ as _).build());
+    INIT_EP.call(RootMessageLabel::RegisterIRQ(irq_handler.bits(), VIRTIO_NET_IRQ as _).build());
 
     irq_handler.irq_handler_ack().unwrap();
 

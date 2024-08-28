@@ -88,7 +88,7 @@ pub fn test_child(ep: Endpoint) -> Result<()> {
         .find_section_by_name(".vsyscall")
         .map(|x| x.address())
         .unwrap_or(0);
-
+    // Get TSS section address.
     user_context.inner_mut().tpidr_el0 = file
         .find_section_by_name(".tbss")
         .map_or(0, |tls| tls.address());
