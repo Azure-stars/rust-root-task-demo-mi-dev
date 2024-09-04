@@ -15,6 +15,7 @@ extern crate alloc;
 mod obj_allocator;
 mod task;
 mod utils;
+mod tests;
 
 use alloc::vec::Vec;
 use alloc_helper::define_allocator;
@@ -29,7 +30,7 @@ use sel4::{
 };
 use sel4_root_task::root_task;
 use task::Sel4Task;
-use utils::abs_cptr;
+use utils::{abs_cptr, sys_null};
 use xmas_elf::ElfFile;
 
 /// Default size of the global allocator
@@ -103,6 +104,9 @@ fn main(bootinfo: &sel4::BootInfo) -> sel4::Result<!> {
 
     let fault_ep = alloc_cap::<cap_type::Endpoint>();
 
+    // Channel to send message to blk thread
+    let blk_dev_ep = alloc_cap::<cap_type::Endpoint>();
+
     // Create kernel-thread and block-thread tasks.
     for file in TASK_FILES {
         tasks.push(build_kernel_thread(
@@ -110,6 +114,8 @@ fn main(bootinfo: &sel4::BootInfo) -> sel4::Result<!> {
             ElfFile::new(file).expect("can't map elf file in root_task"),
         )?);
     }
+
+    tests::test_entry();
 
     // Transfer a untyped memory to kernel_untyped_memory.
     tasks[0]
@@ -122,6 +128,10 @@ fn main(bootinfo: &sel4::BootInfo) -> sel4::Result<!> {
     tasks[1]
         .abs_cptr(DEFAULT_CUSTOM_SLOT)
         .copy(&utils::abs_cptr(net_irq_not), CapRights::all())
+        .unwrap();
+    tasks[1]
+        .abs_cptr(DEFAULT_CUSTOM_SLOT + 2)
+        .copy(&utils::abs_cptr(blk_dev_ep), CapRights::all())
         .unwrap();
 
     // Map device memory to blk-thread task
@@ -185,6 +195,13 @@ fn main(bootinfo: &sel4::BootInfo) -> sel4::Result<!> {
             CapRights::all(),
         )
         .unwrap();
+
+    tasks[2]
+        .abs_cptr(DEFAULT_CUSTOM_SLOT + 2)
+        .copy(&utils::abs_cptr(blk_dev_ep), CapRights::all())
+        .unwrap();
+
+    sys_null(-10);
 
     // Map DMA frame.
     for i in 0..32 {
