@@ -13,3 +13,7 @@ pub const DEFAULT_EMPTY_SLOT_INDEX: usize = 32;
 
 // Init End point, used in tasks.
 pub const INIT_EP: Endpoint = Endpoint::from_bits(DEFAULT_THREAD_FAULT_EP);
+
+// CNode Bits
+pub const DEFAULT_CNODE_BITS: u64 = 12;
+pub const DEFAULT_CNODE_SLOT_NUMS: usize = 1 << DEFAULT_CNODE_BITS;

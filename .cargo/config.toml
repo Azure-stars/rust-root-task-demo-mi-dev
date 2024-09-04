@@ -12,4 +12,4 @@ build-std = ["core", "alloc"]
 
 [env]
 RUST_TARGET_PATH = { value = "support/targets", relative = true }
-SEL4_PREFIX = { value = "/home/yufeng/Code/rel4team/seL4/install" }
+SEL4_PREFIX = { value = "/Users/jackhu/src_code/rust/seL4/install" }

@@ -20,7 +20,7 @@ mod tests;
 use alloc::vec::Vec;
 use alloc_helper::define_allocator;
 use common::{AlignedPage, RootMessageLabel, VIRTIO_MMIO_ADDR};
-use crate_consts::DEFAULT_CUSTOM_SLOT;
+use crate_consts::{DEFAULT_CNODE_SLOT_NUMS, DEFAULT_CUSTOM_SLOT};
 use include_bytes_aligned::include_bytes_aligned;
 use obj_allocator::{alloc_cap, alloc_cap_size, alloc_cap_size_slot, OBJ_ALLOCATOR};
 use sel4::{
@@ -90,7 +90,7 @@ fn main(bootinfo: &sel4::BootInfo) -> sel4::Result<!> {
         .expect("can't get any untyped for root-task");
 
     OBJ_ALLOCATOR.lock().init(
-        bootinfo.empty().start..(0x1000 * 0x1000),
+        bootinfo.empty().start..(DEFAULT_CNODE_SLOT_NUMS * DEFAULT_CNODE_SLOT_NUMS),
         BootInfo::init_cspace_local_cptr::<sel4::cap_type::Untyped>(
             mem_untyped_start + root_untyped.0,
         ),
@@ -98,7 +98,7 @@ fn main(bootinfo: &sel4::BootInfo) -> sel4::Result<!> {
 
     BootInfo::init_thread_tcb().debug_name(b"root");
 
-    rebuild_vspaces();
+    rebuild_cspaces();
 
     let mut tasks = Vec::new();
 
@@ -301,7 +301,7 @@ fn build_kernel_thread(fault_ep: (Endpoint, u64), elf_file: ElfFile) -> sel4::Re
 
 /// The default cspace is 12 bits, has 1024 slots. But it is not enough,
 /// rebuild to 2 level 24 bits in the here.
-fn rebuild_vspaces() {
+fn rebuild_cspaces() {
     let cnode = alloc_cap_size_slot::<cap_type::CNode>(CNODE_RADIX_BITS);
 
     cnode
