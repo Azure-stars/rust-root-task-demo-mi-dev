@@ -1,0 +1,9 @@
+sel4:
+  title: seL4,
+  type: web
+  url: https://sel4.systems/
+
+rust-sel4:
+  title: rust-seL4
+  type: web
+  url: https://github.com/rel4team/rust-sel4
