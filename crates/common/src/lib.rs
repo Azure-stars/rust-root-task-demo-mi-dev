@@ -88,6 +88,7 @@ impl CustomMessageLabel {
 pub enum RootMessageLabel {
     RegisterIRQ(CPtrBits, u64),
     TranslateAddr(usize),
+    RegisterIRQWithCap(u64),
 }
 
 impl RootMessageLabel {
@@ -106,6 +107,7 @@ impl RootMessageLabel {
             match label {
                 0x0 => Some(Self::RegisterIRQ(regs[0], regs[1])),
                 0x1 => Some(Self::TranslateAddr(regs[0] as _)),
+                0x2 => Some(Self::RegisterIRQWithCap(regs[0])),
                 _ => None,
             }
         })
@@ -113,8 +115,9 @@ impl RootMessageLabel {
 
     pub fn to_label(&self) -> u64 {
         let n = match self {
-            Self::RegisterIRQ(_, _) => 0,
-            Self::TranslateAddr(_) => 1,
+            RootMessageLabel::RegisterIRQ(_, _) => 0,
+            RootMessageLabel::TranslateAddr(_) => 1,
+            RootMessageLabel::RegisterIRQWithCap(_) => 2,
         };
         Self::LABEL_START + n
     }
@@ -124,16 +127,22 @@ impl RootMessageLabel {
         let extra_caps = 0;
         let mut msg_size = 0;
 
-        with_ipc_buffer_mut(|buffer| match self {
-            RootMessageLabel::RegisterIRQ(irq_handler, irq_num) => {
-                let regs = buffer.msg_regs_mut();
-                regs[0] = *irq_handler;
-                regs[1] = *irq_num;
-                msg_size = 2;
-            }
-            Self::TranslateAddr(addr) => {
-                buffer.msg_regs_mut()[0] = *addr as _;
-                msg_size = 1;
+        with_ipc_buffer_mut(|buffer| {
+            let regs = buffer.msg_regs_mut();
+            match self {
+                RootMessageLabel::RegisterIRQ(irq_handler, irq_num) => {
+                    regs[0] = *irq_handler;
+                    regs[1] = *irq_num;
+                    msg_size = 2;
+                }
+                RootMessageLabel::TranslateAddr(addr) => {
+                    regs[0] = *addr as _;
+                    msg_size = 1;
+                }
+                RootMessageLabel::RegisterIRQWithCap(irq_num) => {
+                    regs[0] = *irq_num;
+                    msg_size = 1;
+                }
             }
         });
 

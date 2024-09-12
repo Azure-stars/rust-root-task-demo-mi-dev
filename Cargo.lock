@@ -105,7 +105,7 @@ dependencies = [
  "sel4-logging",
  "sel4-panicking",
  "sel4-panicking-env",
- "spin",
+ "spin 0.9.8",
  "virtio-drivers",
 ]
 
@@ -124,7 +124,7 @@ version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a7913f22349ffcfc6ca0ca9a656ec26cfbba538ed49c31a273dff2c5d1ea83d9"
 dependencies = [
- "spin",
+ "spin 0.9.8",
 ]
 
 [[package]]
@@ -467,7 +467,7 @@ dependencies = [
  "atomic-polyfill",
  "hash32",
  "rustc_version",
- "spin",
+ "spin 0.9.8",
  "stable_deref_trait",
 ]
 
@@ -505,7 +505,7 @@ dependencies = [
  "sel4-panicking",
  "sel4-panicking-env",
  "smoltcp",
- "spin",
+ "spin 0.9.8",
  "virtio-drivers",
 ]
 
@@ -541,7 +541,7 @@ dependencies = [
  "sel4-panicking",
  "sel4-panicking-env",
  "sel4-sys",
- "spin",
+ "spin 0.9.8",
  "syscalls",
  "xmas-elf",
 ]
@@ -551,6 +551,9 @@ name = "lazy_static"
 version = "1.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e2abad23fbc42b3700f2f279844dc832adb2b2eb069b2df918f455c4e18cc646"
+dependencies = [
+ "spin 0.5.2",
+]
 
 [[package]]
 name = "lazycell"
@@ -646,7 +649,7 @@ dependencies = [
  "sel4-shared-ring-buffer-block-io",
  "sel4-shared-ring-buffer-smoltcp",
  "smoltcp",
- "spin",
+ "spin 0.9.8",
  "virtio-drivers",
 ]
 
@@ -839,10 +842,11 @@ dependencies = [
  "common",
  "crate-consts",
  "include_bytes_aligned",
+ "lazy_static",
  "sel4",
  "sel4-initialize-tls-on-stack",
  "sel4-root-task",
- "spin",
+ "spin 0.9.8",
  "task-helper",
  "xmas-elf",
 ]
@@ -1313,6 +1317,12 @@ dependencies = [
 
 [[package]]
 name = "spin"
+version = "0.5.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6e63cff320ae2c57904679ba7cb63280a3dc4613885beafb148ee7bf9aa9042d"
+
+[[package]]
+name = "spin"
 version = "0.9.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6980e8d7511241f8acf4aebddbb1ff938df5eebe98691418c4468d0b72a96a67"
@@ -1361,7 +1371,7 @@ dependencies = [
  "crate-consts",
  "sel4",
  "sel4-sync",
- "spin",
+ "spin 0.9.8",
  "xmas-elf",
 ]
 

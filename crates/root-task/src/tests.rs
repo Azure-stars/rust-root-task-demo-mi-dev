@@ -55,7 +55,14 @@ pub fn test_entry() {
         )
         .unwrap();
 
-    let mut task = Sel4Task::new(tcb, cnode, fault_ep, BootInfo::init_thread_vspace(), 0, irq_ep);
+    let mut task = Sel4Task::new(
+        tcb,
+        cnode,
+        fault_ep,
+        BootInfo::init_thread_vspace(),
+        0,
+        irq_ep,
+    );
 
     // Copy Notification
     task.abs_cptr(DEFAULT_CUSTOM_SLOT as u64)

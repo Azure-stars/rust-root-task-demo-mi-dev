@@ -4,7 +4,10 @@
 use core::{cmp, marker::PhantomData};
 
 use alloc::{collections::btree_map::BTreeMap, sync::Arc, vec::Vec};
-use crate_consts::{DEFAULT_THREAD_FAULT_EP, DEFAULT_THREAD_IRQ_EP, DEFAULT_THREAD_NOTIFICATION};
+use crate_consts::{
+    DEFAULT_THREAD_FAULT_EP, DEFAULT_THREAD_IRQ_EP, DEFAULT_THREAD_NOTIFICATION,
+    DEFAULT_THREAD_RECV_SLOT,
+};
 use sel4::{
     sys, AbsoluteCPtr, BootInfo, CNodeCapData, CPtr, CPtrBits, CapRights, Error, Granule,
     HasCPtrWithDepth, Notification, Null, VMAttributes,

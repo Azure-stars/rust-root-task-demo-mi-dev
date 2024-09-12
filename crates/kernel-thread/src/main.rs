@@ -104,8 +104,8 @@ fn main(ipc_buffer: IPCBuffer) -> sel4::Result<!> {
         LocalCPtr::from_bits(DEFAULT_CUSTOM_SLOT as _),
     );
 
-    test_func!("Test IRQ", irq_test::test_irq());
-    loop {}
+    // test_func!("Test IRQ", irq_test::test_irq());
+    test_func!("Test IRQ", irq_test::test_irq2());
 
     test_func!("Test Thread", {
         let ep = alloc_cap::<cap_type::Endpoint>();
