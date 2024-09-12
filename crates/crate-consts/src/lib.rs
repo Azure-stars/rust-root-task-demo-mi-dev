@@ -6,6 +6,8 @@ use sel4::Endpoint;
 pub const DEFAULT_THREAD_NOTIFICATION: u64 = 17;
 /// The default endpoint for thread lock.
 pub const DEFAULT_THREAD_FAULT_EP: u64 = 18;
+/// The default endpoint for thread IRQ.
+pub const DEFAULT_THREAD_IRQ_EP: u64 = 20;
 /// The default slot to store custom cap.
 pub const DEFAULT_CUSTOM_SLOT: u64 = 26;
 /// The Default Index of the empty slot.

@@ -4,7 +4,7 @@
 use core::{cmp, marker::PhantomData};
 
 use alloc::{collections::btree_map::BTreeMap, sync::Arc, vec::Vec};
-use crate_consts::{DEFAULT_THREAD_FAULT_EP, DEFAULT_THREAD_NOTIFICATION};
+use crate_consts::{DEFAULT_THREAD_FAULT_EP, DEFAULT_THREAD_IRQ_EP, DEFAULT_THREAD_NOTIFICATION};
 use sel4::{
     sys, AbsoluteCPtr, BootInfo, CNodeCapData, CPtr, CPtrBits, CapRights, Error, Granule,
     HasCPtrWithDepth, Notification, Null, VMAttributes,
@@ -75,6 +75,7 @@ impl<H: TaskHelperTrait<Self>> Sel4TaskHelper<H> {
         fault_ep: sel4::Endpoint,
         vspace: sel4::VSpace,
         badge: u64,
+        irq_ep: sel4::Endpoint,
     ) -> Self {
         let task = Self {
             tcb,
@@ -89,6 +90,11 @@ impl<H: TaskHelperTrait<Self>> Sel4TaskHelper<H> {
         // Move Fault EP to child process
         task.abs_cptr(DEFAULT_THREAD_FAULT_EP)
             .mint(&init_abs_cptr(fault_ep), CapRights::all(), badge)
+            .unwrap();
+
+        // Move IRQ EP to child process
+        task.abs_cptr(DEFAULT_THREAD_IRQ_EP)
+            .mint(&init_abs_cptr(irq_ep), CapRights::all(), badge)
             .unwrap();
 
         // Copy ASIDPool to the task, children can assign another children.

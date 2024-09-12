@@ -105,6 +105,7 @@ fn main(ipc_buffer: IPCBuffer) -> sel4::Result<!> {
     );
 
     test_func!("Test IRQ", irq_test::test_irq());
+    loop {}
 
     test_func!("Test Thread", {
         let ep = alloc_cap::<cap_type::Endpoint>();

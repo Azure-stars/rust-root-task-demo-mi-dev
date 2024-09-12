@@ -17,3 +17,4 @@ xmas-elf = "0.9.1"
 common = { path = "../common" }
 task-helper = { path = "../task-helper" }
 include_bytes_aligned = "0.1.3"
+lazy_static = { version = "1.4.0", features = ["spin_no_std"] }

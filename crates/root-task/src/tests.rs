@@ -26,6 +26,7 @@ pub fn test_stack() {
 
 pub fn test_entry() {
     let fault_ep = alloc_cap::<cap_type::Endpoint>();
+    let irq_ep = alloc_cap::<cap_type::Endpoint>();
 
     let cnode = alloc_cap_size::<cap_type::CNode>(CNODE_RADIX_BITS);
     let inner_cnode = alloc_cap_size::<cap_type::CNode>(CNODE_RADIX_BITS);
@@ -54,7 +55,7 @@ pub fn test_entry() {
         )
         .unwrap();
 
-    let mut task = Sel4Task::new(tcb, cnode, fault_ep, BootInfo::init_thread_vspace(), 0);
+    let mut task = Sel4Task::new(tcb, cnode, fault_ep, BootInfo::init_thread_vspace(), 0, irq_ep);
 
     // Copy Notification
     task.abs_cptr(DEFAULT_CUSTOM_SLOT as u64)
@@ -107,5 +108,5 @@ pub fn test_entry() {
     abs_cptr(tcb).delete().unwrap();
     sys_null(-10);
     debug_println!("Missing Page Handled Successfully ");
-    loop {}
+    // loop {}
 }
