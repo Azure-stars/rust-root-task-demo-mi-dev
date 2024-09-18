@@ -17,17 +17,16 @@ mod task;
 mod tests;
 mod utils;
 
-use alloc::{collections::btree_map::BTreeMap, vec::Vec};
+use alloc::vec::Vec;
 use alloc_helper::define_allocator;
 use common::{AlignedPage, RootMessageLabel, VIRTIO_MMIO_ADDR};
 use crate_consts::{DEFAULT_CNODE_SLOT_NUMS, DEFAULT_CUSTOM_SLOT};
 use include_bytes_aligned::include_bytes_aligned;
-use lazy_static::lazy_static;
 use obj_allocator::{alloc_cap, alloc_cap_size, alloc_cap_size_slot, OBJ_ALLOCATOR};
 use sel4::{
     cap_type, debug_println, reply, with_ipc_buffer, with_ipc_buffer_mut, BootInfo, CNode,
-    CNodeCapData, CPtr, CapRights, Endpoint, IRQHandler, LargePage, MessageInfo,
-    ObjectBlueprintArm, UntypedDesc, VMAttributes,
+    CNodeCapData, CPtr, CapRights, Endpoint, LargePage, MessageInfo, ObjectBlueprintArm,
+    UntypedDesc, VMAttributes,
 };
 use sel4_root_task::root_task;
 use task::Sel4Task;
@@ -54,19 +53,20 @@ pub fn page_seat_vaddr() -> usize {
 /// The radix bits of the cnode in the task.
 const CNODE_RADIX_BITS: usize = 12;
 
-lazy_static! {
-    static ref TASK_FILES: BTreeMap<&'static str, &'static [u8]> = {
-        let mut map = BTreeMap::new();
-        map.insert(
-            "kernel-thread",
-            include_bytes_aligned!(16, "../../../build/kernel-thread.elf"),
-        );
-        // map.insert("blk-thread", include_bytes_aligned!(16, "../../../build/blk-thread.elf"));
-        // map.insert("net-thread", include_bytes_aligned!(16, "../../../build/net-thread.elf");
-        // map.insert("http-server", include_bytes_aligned!(16, "../../../build/http-server.elf");
-        map
-    };
-}
+static TASK_FILES: &[(&str, &[u8])] = &[
+    (
+        "kernel-thread",
+        include_bytes_aligned!(16, "../../../build/kernel-thread.elf"),
+    ),
+    (
+        "block-thread",
+        include_bytes_aligned!(16, "../../../build/blk-thread.elf"),
+    ),
+    (
+        "net-thread",
+        include_bytes_aligned!(16, "../../../build/net-thread.elf"),
+    ),
+];
 
 #[root_task]
 fn main(bootinfo: &sel4::BootInfo) -> sel4::Result<!> {
@@ -111,9 +111,7 @@ fn main(bootinfo: &sel4::BootInfo) -> sel4::Result<!> {
     let mut tasks = Vec::new();
 
     let fault_ep = alloc_cap::<cap_type::Endpoint>();
-    debug_println!("fault_ep: {:?}", fault_ep);
     let irq_ep = alloc_cap::<cap_type::Endpoint>();
-    debug_println!("irq_ep: {:?}", irq_ep);
 
     // Channel to send message to blk thread
     let blk_dev_ep = alloc_cap::<cap_type::Endpoint>();
@@ -136,90 +134,93 @@ fn main(bootinfo: &sel4::BootInfo) -> sel4::Result<!> {
         .copy(&utils::abs_cptr(kernel_untyped), CapRights::all())
         .unwrap();
 
-    // // Set Notification for Blk-Thread Task.
-    // let net_irq_not = alloc_cap::<cap_type::Notification>();
-    // tasks[1]
-    //     .abs_cptr(DEFAULT_CUSTOM_SLOT)
-    //     .copy(&utils::abs_cptr(net_irq_not), CapRights::all())
-    //     .unwrap();
-    // tasks[1]
-    //     .abs_cptr(DEFAULT_CUSTOM_SLOT + 2)
-    //     .copy(&utils::abs_cptr(blk_dev_ep), CapRights::all())
-    //     .unwrap();
+    // Set Notification for Blk-Thread Task.
+    let net_irq_not = alloc_cap::<cap_type::Notification>();
+    tasks[1]
+        .abs_cptr(DEFAULT_CUSTOM_SLOT)
+        .copy(&utils::abs_cptr(net_irq_not), CapRights::all())
+        .unwrap();
+    tasks[1]
+        .abs_cptr(DEFAULT_CUSTOM_SLOT + 2)
+        .copy(&utils::abs_cptr(blk_dev_ep), CapRights::all())
+        .unwrap();
 
-    // // Map device memory to blk-thread task
-    // let finded_device_idx = bootinfo
-    //     .device_untyped_list()
-    //     .iter()
-    //     .position(|x| {
-    //         x.paddr() < VIRTIO_MMIO_ADDR && x.paddr() + (1 << x.size_bits()) > VIRTIO_MMIO_ADDR
-    //     })
-    //     .expect("can't find device memory");
-    // let device_untyped = BootInfo::init_cspace_local_cptr::<sel4::cap_type::Untyped>(
-    //     bootinfo.untyped().start + finded_device_idx,
-    // );
+    // Map device memory to blk-thread task
+    let finded_device_idx = bootinfo
+        .device_untyped_list()
+        .iter()
+        .position(|x| {
+            x.paddr() < VIRTIO_MMIO_ADDR && x.paddr() + (1 << x.size_bits()) > VIRTIO_MMIO_ADDR
+        })
+        .expect("can't find device memory");
+    let device_untyped = BootInfo::init_cspace_local_cptr::<sel4::cap_type::Untyped>(
+        bootinfo.untyped().start + finded_device_idx,
+    );
 
-    // let device_frame = {
-    //     let slot_pos = OBJ_ALLOCATOR.lock().alloc_slot();
-    //     device_untyped
-    //         .untyped_retype(
-    //             &ObjectBlueprintArm::LargePage.into(),
-    //             &BootInfo::init_thread_cnode().relative_bits_with_depth(slot_pos.1 as _, 52),
-    //             slot_pos.0,
-    //             1,
-    //         )
-    //         .unwrap();
-    //     sel4::BootInfo::init_cspace_local_cptr::<cap_type::LargePage>(slot_pos.2)
-    // };
+    let device_frame = {
+        let slot_pos = OBJ_ALLOCATOR.lock().alloc_slot();
+        device_untyped
+            .untyped_retype(
+                &ObjectBlueprintArm::LargePage.into(),
+                &BootInfo::init_thread_cnode().relative_bits_with_depth(slot_pos.1 as _, 52),
+                slot_pos.0,
+                1,
+            )
+            .unwrap();
+        sel4::BootInfo::init_cspace_local_cptr::<cap_type::LargePage>(slot_pos.2)
+    };
 
-    // // FIXME: assert device frame area.
-    // assert!(device_frame.frame_get_address().unwrap() < VIRTIO_MMIO_ADDR);
-    // device_frame
-    //     .frame_map(
-    //         tasks[1].vspace,
-    //         0x1_2000_0000,
-    //         CapRights::all(),
-    //         VMAttributes::DEFAULT,
-    //     )
-    //     .unwrap();
+    // FIXME: assert device frame area.
+    assert!(device_frame.frame_get_address().unwrap() < VIRTIO_MMIO_ADDR);
+    device_frame
+        .frame_map(
+            tasks[1].vspace,
+            0x1_2000_0000,
+            CapRights::all(),
+            VMAttributes::DEFAULT,
+        )
+        .unwrap();
 
-    // // Map DMA frame.
-    // tasks[1].map_page(0x1_0000_3000, alloc_cap::<cap_type::Granule>());
-    // tasks[1].map_page(0x1_0000_4000, alloc_cap::<cap_type::Granule>());
+    // Map DMA frame.
+    tasks[1].map_page(0x1_0000_3000, alloc_cap::<cap_type::Granule>());
+    tasks[1].map_page(0x1_0000_4000, alloc_cap::<cap_type::Granule>());
 
-    // // Resumt Block Thread Task.
-    // let device_slot = OBJ_ALLOCATOR.lock().alloc_slot();
-    // abs_cptr(LargePage::from_bits(device_slot.2 as _))
-    //     .copy(&abs_cptr(device_frame), CapRights::all())
-    //     .unwrap();
-    // LargePage::from_bits(device_slot.2 as _)
-    //     .frame_map(
-    //         tasks[2].vspace,
-    //         0x1_2000_0000,
-    //         CapRights::all(),
-    //         VMAttributes::DEFAULT,
-    //     )
-    //     .unwrap();
+    // Resumt Block Thread Task.
+    let device_slot = OBJ_ALLOCATOR.lock().alloc_slot();
+    abs_cptr(LargePage::from_bits(device_slot.2 as _))
+        .copy(&abs_cptr(device_frame), CapRights::all())
+        .unwrap();
+    LargePage::from_bits(device_slot.2 as _)
+        .frame_map(
+            tasks[2].vspace,
+            0x1_2000_0000,
+            CapRights::all(),
+            VMAttributes::DEFAULT,
+        )
+        .unwrap();
 
-    // tasks[2]
-    //     .abs_cptr(DEFAULT_CUSTOM_SLOT)
-    //     .copy(
-    //         &utils::abs_cptr(alloc_cap::<cap_type::Notification>()),
-    //         CapRights::all(),
-    //     )
-    //     .unwrap();
+    tasks[2]
+        .abs_cptr(DEFAULT_CUSTOM_SLOT)
+        .copy(
+            &utils::abs_cptr(alloc_cap::<cap_type::Notification>()),
+            CapRights::all(),
+        )
+        .unwrap();
 
-    // tasks[2]
-    //     .abs_cptr(DEFAULT_CUSTOM_SLOT + 2)
-    //     .copy(&utils::abs_cptr(blk_dev_ep), CapRights::all())
-    //     .unwrap();
+    tasks[2]
+        .abs_cptr(DEFAULT_CUSTOM_SLOT + 2)
+        .copy(&utils::abs_cptr(blk_dev_ep), CapRights::all())
+        .unwrap();
 
-    // sys_null(-10);
+    sys_null(-10);
 
-    // // Map DMA frame.
-    // for i in 0..32 {
-    //     tasks[2].map_page(0x1_0000_3000 + i * 0x1000, alloc_cap::<cap_type::Granule>());
-    // }
+    // Map DMA frame.
+    for i in 0..32 {
+        tasks[2].map_page(0x1_0000_3000 + i * 0x1000, alloc_cap::<cap_type::Granule>());
+    }
+
+    // used for irq handler registration
+    let common_irq_handler = alloc_cap::<cap_type::IRQHandler>();
 
     // Start tasks
     tasks.iter().for_each(Sel4Task::run);
@@ -258,7 +259,6 @@ fn main(bootinfo: &sel4::BootInfo) -> sel4::Result<!> {
                     });
 
                     // send irq handler to kernel thread, TODO: use a common irq handler in constant.
-                    let common_irq_handler = alloc_cap::<cap_type::IRQHandler>();
                     BootInfo::irq_control()
                         .irq_control_get(
                             irq_num,
@@ -271,21 +271,8 @@ fn main(bootinfo: &sel4::BootInfo) -> sel4::Result<!> {
                     });
 
                     // call
-                    let info = MessageInfo::new(7, 1, 1, 1);
-                    debug_println!("Send IRQ Handler to Kernel Thread.");
+                    let info = MessageInfo::new(0, 0, 1, 0);
                     irq_ep.call(info);
-                    debug_println!("IRQ Handler Registered.");
-
-                    // let ntf = alloc_cap::<cap_type::Notification>();
-                    // let irq_handler = IRQHandler::from_bits(888);
-                    // irq_handler.irq_handler_set_notification(ntf).unwrap();
-                    // irq_handler.irq_handler_ack().unwrap();
-                    // ntf.wait();
-                    // debug_println!("IRQ Received.");
-                    // // common_irq_handler.irq_handler_set_notification(ntf).unwrap();
-                    // // common_irq_handler.irq_handler_ack().unwrap();
-                    // // ntf.wait();
-                    // // debug_println!("IRQ Received.");
                 }
             }
         } else {

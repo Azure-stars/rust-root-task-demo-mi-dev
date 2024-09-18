@@ -1,14 +1,9 @@
 use common::RootMessageLabel;
-use crate_consts::{
-    DEFAULT_CUSTOM_SLOT, DEFAULT_THREAD_FAULT_EP, DEFAULT_THREAD_IRQ_EP, DEFAULT_THREAD_RECV_SLOT,
-};
+use crate_consts::{DEFAULT_THREAD_FAULT_EP, DEFAULT_THREAD_IRQ_EP, DEFAULT_THREAD_RECV_SLOT};
 use sel4::{
     cap_type::{self},
-    debug_println, reply, with_ipc_buffer, with_ipc_buffer_mut, AbsoluteCPtr, BootInfo, CNode,
-    CPtr, CapRights, IRQHandler, LocalCPtr, MessageInfo,
+    debug_println, reply, with_ipc_buffer_mut, BootInfo, CPtr, IRQHandler, LocalCPtr, MessageInfo,
 };
-
-use sel4_sys::seL4_MessageInfo;
 
 use crate::object_allocator::alloc_cap;
 
@@ -19,9 +14,7 @@ pub fn test_irq() {
     let notification = alloc_cap::<cap_type::Notification>();
     let irq_handler = alloc_cap::<cap_type::IRQHandler>();
 
-    let msg =
-        ep.call(RootMessageLabel::RegisterIRQ(irq_handler.bits(), SERIAL_DEVICE_IRQ as _).build());
-    debug_println!("[kernel thread] get irq register msg: {:?}", msg);
+    ep.call(RootMessageLabel::RegisterIRQ(irq_handler.bits(), SERIAL_DEVICE_IRQ as _).build());
 
     irq_handler
         .irq_handler_set_notification(notification)
@@ -35,26 +28,22 @@ pub fn test_irq() {
     irq_handler.irq_handler_clear().unwrap();
 }
 
-pub fn test_irq2() {
+pub fn test_irq_with_cap_transfer() {
     let ep = LocalCPtr::<cap_type::Endpoint>::from_bits(DEFAULT_THREAD_FAULT_EP);
+    let irq_ep = LocalCPtr::<cap_type::Endpoint>::from_bits(DEFAULT_THREAD_IRQ_EP);
+    let irq_handler = IRQHandler::from_bits(DEFAULT_THREAD_RECV_SLOT as _);
     let notification = alloc_cap::<cap_type::Notification>();
 
-    let msg = ep.call(RootMessageLabel::RegisterIRQWithCap(SERIAL_DEVICE_IRQ as _).build());
-    debug_println!("get msg: {:?}", msg);
+    ep.call(RootMessageLabel::RegisterIRQWithCap(SERIAL_DEVICE_IRQ as _).build());
 
-    let irq_ep = LocalCPtr::<cap_type::Endpoint>::from_bits(DEFAULT_THREAD_IRQ_EP);
-
-    // let root_cnode = CNode::from_bits(190);
-    // let irq_handler = alloc_cap::<cap_type::IRQHandler>();
-    // let recv_slot = root_cnode.relative(irq_handler.cptr());
-    let recv_slot = BootInfo::init_thread_cnode().relative(CPtr::from_bits(888));
-    with_ipc_buffer_mut(|buffer| buffer.set_recv_slot(&recv_slot));
-    let msg = irq_ep.recv(());
-    debug_println!("get msg: {:?}", msg.0);
-    loop {}
+    // Set the recv slot for the irq_ep
+    with_ipc_buffer_mut(|buffer| {
+        buffer.set_recv_slot(
+            &BootInfo::init_thread_cnode().relative(CPtr::from_bits(DEFAULT_THREAD_RECV_SLOT as _)),
+        )
+    });
+    irq_ep.recv(());
     with_ipc_buffer_mut(|buffer| reply(buffer, MessageInfo::new(0, 0, 0, 0)));
-
-    let irq_handler = IRQHandler::from_bits(888);
 
     irq_handler
         .irq_handler_set_notification(notification)

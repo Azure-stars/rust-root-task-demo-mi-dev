@@ -83,12 +83,14 @@ impl CustomMessageLabel {
     }
 }
 
+pub type IrqNum = u64;
+
 #[repr(usize)]
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum RootMessageLabel {
-    RegisterIRQ(CPtrBits, u64),
+    RegisterIRQ(CPtrBits, IrqNum),
     TranslateAddr(usize),
-    RegisterIRQWithCap(u64),
+    RegisterIRQWithCap(IrqNum),
 }
 
 impl RootMessageLabel {
@@ -105,9 +107,9 @@ impl RootMessageLabel {
         with_ipc_buffer(|buffer| {
             let regs = buffer.msg_regs();
             match label {
-                0x0 => Some(Self::RegisterIRQ(regs[0], regs[1])),
+                0x0 => Some(Self::RegisterIRQ(regs[0], regs[1] as _)),
                 0x1 => Some(Self::TranslateAddr(regs[0] as _)),
-                0x2 => Some(Self::RegisterIRQWithCap(regs[0])),
+                0x2 => Some(Self::RegisterIRQWithCap(regs[0] as _)),
                 _ => None,
             }
         })
