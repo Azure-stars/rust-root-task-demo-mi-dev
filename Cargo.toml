@@ -5,17 +5,5 @@
 #
 
 [workspace]
-
 resolver = "2"
-
-members = [
-    "crates/alloc-helper",
-    "crates/kernel-thread",
-    "crates/common",
-    "crates/root-task",
-    "crates/shim-comp",
-    "crates/task-helper", 
-    "crates/blk-thread", 
-    "crates/crate-consts", 
-    "crates/net-thread", "crates/http-server",
-]
+members = ["crates/alloc-helper", "crates/root-task"]

@@ -67,25 +67,6 @@ $(app): $(app_intermediate)
 .INTERMDIATE: $(app_intermediate)
 $(app_intermediate):
 	SEL4_PREFIX=$(sel4_prefix) \
-	RUSTFLAGS="-Clink-arg=-Tcrates/shim-comp/linker.ld" \
-		cargo build \
-			-Z build-std=core,alloc,compiler_builtins \
-			-Z build-std-features=compiler-builtins-mem \
-			--target $(TARGET) \
-			--target-dir $(abspath $(build_dir)/target) \
-			--out-dir $(build_dir) \
-			--release \
-			-p shim-comp
-	SEL4_PREFIX=$(sel4_prefix) \
-		cargo build \
-			-Z build-std=core,alloc,compiler_builtins \
-			-Z build-std-features=compiler-builtins-mem \
-			--target $(TARGET) \
-			--target-dir $(abspath $(build_dir)/target) \
-			--out-dir $(build_dir) \
-			--release \
-			-p kernel-thread -p blk-thread -p net-thread -p http-server
-	SEL4_PREFIX=$(sel4_prefix) \
 		cargo build \
 			-Z build-std=core,alloc,compiler_builtins \
 			-Z build-std-features=compiler-builtins-mem \
@@ -95,7 +76,6 @@ $(app_intermediate):
 			--release \
 			-p $(app_crate)
 	
-
 image := $(build_dir)/image.elf
 
 # Append the payload to the loader using the loader CLI
