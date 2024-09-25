@@ -9,5 +9,5 @@
 resolver = "2"
 
 members = [
-    "crates/example",
+    "crates/root-task",
 ]
