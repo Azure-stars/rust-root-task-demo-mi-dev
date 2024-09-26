@@ -1,0 +1,115 @@
+use core::ops::Range;
+
+use sel4::{
+    cap::Untyped, cap_type, init_thread, BootInfo, CPtr, CapType, ObjectBlueprint,
+    ObjectBlueprintAArch64, ObjectBlueprintArch,
+};
+use spin::Mutex;
+
+pub(crate) struct ObjectAllocator {
+    empty_slots: Range<usize>,
+    ut: Untyped,
+}
+
+pub trait AllocateCapBluePrint {
+    fn get_blueprint() -> Option<ObjectBlueprint>;
+}
+
+pub trait AllocateCapBluePrintSized {
+    fn get_blueprint(size_bits: usize) -> ObjectBlueprint;
+}
+
+macro_rules! impl_cap_blueprint {
+    ($cap:ty) => {
+        impl AllocateCapBluePrint for $cap {
+            fn get_blueprint() -> Option<ObjectBlueprint> {
+                None
+            }
+        }
+    };
+    ($cap:ty, $bp: expr) => {
+        impl AllocateCapBluePrint for $cap {
+            fn get_blueprint() -> Option<ObjectBlueprint> {
+                Some($bp.into())
+            }
+        }
+    };
+    ($cap:ty, $bp: expr, $bits_name: ident) => {
+        impl AllocateCapBluePrintSized for $cap {
+            fn get_blueprint($bits_name: usize) -> ObjectBlueprint {
+                $bp.into()
+            }
+        }
+    };
+}
+
+pub static OBJ_ALLOCATOR: Mutex<ObjectAllocator> = Mutex::new(ObjectAllocator::empty());
+
+impl_cap_blueprint!(cap_type::IrqHandler);
+impl_cap_blueprint!(cap_type::Endpoint, ObjectBlueprint::Endpoint);
+impl_cap_blueprint!(cap_type::Tcb, ObjectBlueprint::Tcb);
+impl_cap_blueprint!(cap_type::VSpace, ObjectBlueprintAArch64::VSpace);
+impl_cap_blueprint!(cap_type::SmallPage, ObjectBlueprintArch::SmallPage);
+impl_cap_blueprint!(cap_type::PT, ObjectBlueprintArch::PT);
+impl_cap_blueprint!(cap_type::Notification, ObjectBlueprint::Notification);
+impl_cap_blueprint!(
+    cap_type::CNode,
+    ObjectBlueprint::CNode { size_bits },
+    size_bits
+);
+
+impl ObjectAllocator {
+    /// Create a new empty ObjectAllocator
+    pub(crate) const fn empty() -> Self {
+        Self {
+            empty_slots: 0..0,
+            ut: Untyped::from_bits(0),
+        }
+    }
+
+    /// Init object allocator with [sel4::BootInfo]
+    pub(crate) fn init(&mut self, empty_range: Range<usize>, untyped: Untyped) {
+        self.empty_slots = empty_range;
+        self.ut = untyped;
+    }
+}
+
+/// Allocate cap with Generic definition.
+pub(crate) fn alloc_cap<C: AllocateCapBluePrint + CapType>() -> sel4::Cap<C> {
+    let mut allocator = OBJ_ALLOCATOR.lock();
+    let slot_index = allocator.empty_slots.next().unwrap();
+    if let Some(ref blue_print) = C::get_blueprint() {
+        allocator
+            .ut
+            .untyped_retype(
+                blue_print,
+                &init_thread::slot::CNODE
+                    .cap()
+                    .relative_bits_with_depth(0, 52),
+                slot_index,
+                1,
+            )
+            .expect("can't allocate notification");
+    }
+    CPtr::from_bits(slot_index.try_into().unwrap()).cast::<C>()
+}
+
+/// Allocate cap with Generic definition and size_bits;
+pub(crate) fn alloc_cap_size<C: AllocateCapBluePrintSized + CapType>(
+    size_bits: usize,
+) -> sel4::Cap<C> {
+    let mut allocator = OBJ_ALLOCATOR.lock();
+    let slot_index = allocator.empty_slots.next().unwrap();
+    allocator
+        .ut
+        .untyped_retype(
+            &C::get_blueprint(size_bits),
+            &init_thread::slot::CNODE
+                .cap()
+                .relative_bits_with_depth(0, 52),
+            slot_index,
+            1,
+        )
+        .expect("can't allocate notification");
+    CPtr::from_bits(slot_index.try_into().unwrap()).cast::<C>()
+}

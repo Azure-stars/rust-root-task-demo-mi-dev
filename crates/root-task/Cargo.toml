@@ -5,12 +5,20 @@
 #
 
 [package]
-name = "example"
+name = "root-task"
 version = "0.1.0"
-authors = ["Nick Spinale <nick.spinale@coliasgroup.com>"]
 edition = "2021"
-license = "BSD-2-Clause"
 
 [dependencies]
-sel4 = { git = "https://github.com/seL4/rust-sel4" }
-sel4-root-task = { git = "https://github.com/seL4/rust-sel4" }
+alloc-helper = { path = "../alloc-helper" }
+crate-consts = { path = "../crate-consts" }
+task-helper = { path = "../task-helper" }
+kernel-thread = { path = "../kernel-thread" }
+common = { path = "../common" }
+sel4 = { git = "https://github.com/seL4/rust-sel4", rev = "1cd063a" }
+sel4-root-task = { git = "https://github.com/seL4/rust-sel4", rev = "1cd063a" }
+spin = { version = "0.9.8" }
+buddy_system_allocator = "0.10.0"
+xmas-elf = "0.9.1"
+include_bytes_aligned = "0.1.3"
+lazy_static = { version = "1.4.0", features = ["spin_no_std"] }
