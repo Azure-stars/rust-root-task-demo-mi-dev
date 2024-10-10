@@ -1,6 +1,7 @@
 use core::cmp;
 
-use common::CustomMessageLabel;
+use common::{CustomMessageLabel, USPACE_STACK_SIZE, USPACE_STACK_TOP};
+use crate_consts::DEFAULT_THREAD_FAULT_EP;
 use sel4::{
     cap_type, debug_println, r#yield, reply, with_ipc_buffer, with_ipc_buffer_mut, BootInfo,
     CNodeCapData, CapRights, Endpoint, Fault, MessageInfo, Result, Word,
@@ -8,18 +9,15 @@ use sel4::{
 use xmas_elf::ElfFile;
 
 use crate::{
-    ipc_call::handle_ipc_call,
-    object_allocator::alloc_cap,
-    task::{Sel4Task, DEFAULT_USER_STACK_SIZE},
-    utils::align_bits,
+    object_allocator::alloc_cap, syscall::handle_ipc_call, task::Sel4Task, utils::align_bits,
 };
 
 // TODO: Make elf file path dynamically available.
-const CHILD_ELF: &[u8] = include_bytes!("../../../build/shim-comp.elf");
+const CHILD_ELF: &[u8] = include_bytes!("../../../build/test-thread.elf");
 const BUSYBOX_ELF: &[u8] = include_bytes!("../../../busybox");
 
 pub fn test_child(ep: Endpoint) -> Result<()> {
-    let args = &["busybox", "echo", "BusyboxRunEcho"];
+    let args = &["busybox", "--help"];
     log::debug!("Run Command {:?}", args);
     let mut task = Sel4Task::new();
 
@@ -50,8 +48,8 @@ pub fn test_child(ep: Endpoint) -> Result<()> {
 
     let sp_ptr = task.map_stack(
         &busybox_file,
-        DEFAULT_USER_STACK_SIZE - 0x10000,
-        DEFAULT_USER_STACK_SIZE,
+        USPACE_STACK_TOP - USPACE_STACK_SIZE,
+        USPACE_STACK_TOP,
         args,
     );
 
@@ -61,8 +59,8 @@ pub fn test_child(ep: Endpoint) -> Result<()> {
         .section_iter()
         .fold(0, |acc, x| cmp::max(acc, x.address() + x.size()));
     let ipc_buffer_addr = (max + 4096 - 1) / 4096 * 4096;
-    task.map_page(ipc_buffer_addr as _, ipc_buffer_cap);
-
+    task.map_page(ipc_buffer_addr as _, ipc_buffer_cap, CapRights::all());
+    debug_println!("ipc_buffer_addr: {:#x?}", ipc_buffer_addr);
     // Configure the child task
     task.tcb.tcb_configure(
         ep.cptr(),
@@ -99,12 +97,12 @@ pub fn test_child(ep: Endpoint) -> Result<()> {
 
     task.tcb.tcb_set_affinity(0).unwrap();
     task.tcb.debug_name(b"before name");
-
+    debug_println!("[Kernel Thread] Start Task");
     // sel4::debug_snapshot();
     task.tcb.tcb_resume().unwrap();
 
     loop {
-        if task.exit {
+        if task.exit.is_some() {
             break;
         }
         let (message, _badge) = ep.recv(());
@@ -117,7 +115,7 @@ pub fn test_child(ep: Endpoint) -> Result<()> {
                     let vaddr = align_bits(vmfault.addr() as usize, 12);
                     let page_cap = alloc_cap::<cap_type::Granule>();
 
-                    task.map_page(vaddr, page_cap);
+                    task.map_page(vaddr, page_cap, CapRights::all());
 
                     task.tcb.tcb_resume().unwrap();
                 }

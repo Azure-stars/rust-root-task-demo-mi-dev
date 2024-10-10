@@ -8,10 +8,10 @@ extern crate alloc;
 extern crate sel4_panicking;
 
 mod child;
-mod ipc_call;
 mod irq_test;
 mod logging;
 mod object_allocator;
+mod syscall;
 mod task;
 mod utils;
 

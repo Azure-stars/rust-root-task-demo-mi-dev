@@ -1,7 +1,11 @@
-use core::cmp;
+use core::{
+    cmp,
+    sync::atomic::{AtomicU64, Ordering},
+};
 
 use alloc::{collections::btree_map::BTreeMap, vec::Vec};
-use sel4::{cap_type, debug_println, BootInfo, CapRights, Error, SmallPage, VMAttributes};
+use common::{USPACE_BASE, USPACE_HEAP_BASE};
+use sel4::{cap_type, BootInfo, CapRights, Error, SmallPage, VMAttributes};
 use xmas_elf::{program, ElfFile};
 
 use crate::{
@@ -9,7 +13,6 @@ use crate::{
     page_seat_vaddr,
 };
 
-pub const DEFAULT_USER_STACK_SIZE: usize = 0x1_0000_0000;
 const PAGE_SIZE: usize = 0x1000;
 const STACK_ALIGN_SIZE: usize = 16;
 
@@ -73,7 +76,15 @@ pub struct Sel4Task {
     pub mapped_pt: Vec<sel4::PT>,
     pub mapped_page: BTreeMap<usize, sel4::SmallPage>,
     pub heap: usize,
-    pub exit: bool,
+    pub exit: Option<i32>,
+    pub id: u64,
+    pub pid: u64,
+    /// The clear thread tid field
+    ///
+    /// See <https://manpages.debian.org/unstable/manpages-dev/set_tid_address.2.en.html#clear_child_tid>
+    ///
+    /// When the thread exits, the kernel clears the word at this address if it is not NULL.
+    pub clear_child_tid: Option<usize>,
 }
 
 impl Drop for Sel4Task {
@@ -99,6 +110,7 @@ impl Drop for Sel4Task {
 
 impl Sel4Task {
     pub fn new() -> Sel4Task {
+        static ID_COUNTER: AtomicU64 = AtomicU64::new(1);
         let vspace = alloc_cap::<cap_type::VSpace>();
 
         BootInfo::init_thread_asid_pool()
@@ -111,18 +123,36 @@ impl Sel4Task {
             vspace,
             mapped_pt: Vec::new(),
             mapped_page: BTreeMap::new(),
-            heap: 0x2_0000_0000,
-            exit: false,
+            heap: USPACE_HEAP_BASE,
+            exit: None,
+            id: ID_COUNTER.fetch_add(1, Ordering::Relaxed),
+            pid: 0,
+            clear_child_tid: None,
         }
     }
 
-    pub fn map_page(&mut self, vaddr: usize, page: sel4::SmallPage) {
+    /// To find a free area in the vspace.
+    ///
+    /// The area starts from `start` and the size is `size`.
+    pub fn find_free_area(&self, start: usize, size: usize) -> Option<usize> {
+        let mut last_addr = USPACE_BASE.max(start);
+        for (vaddr, _page) in &self.mapped_page {
+            if last_addr + size <= *vaddr {
+                return Some(last_addr);
+            }
+            last_addr = *vaddr + PAGE_SIZE;
+        }
+        // TODO: Set the limit of the top of the user space.
+        Some(last_addr)
+    }
+
+    pub fn map_page(&mut self, vaddr: usize, page: sel4::SmallPage, rights: CapRights) {
         assert_eq!(vaddr % PAGE_SIZE, 0);
         for _ in 0..4 {
             let res: core::result::Result<(), sel4::Error> = page.frame_map(
                 self.vspace,
                 vaddr as _,
-                CapRights::all(),
+                rights.clone(),
                 VMAttributes::DEFAULT,
             );
             match res {
@@ -142,6 +172,17 @@ impl Sel4Task {
         }
     }
 
+    pub fn unmap_page(&mut self, vaddr: usize, page: sel4::SmallPage) {
+        assert_eq!(vaddr % PAGE_SIZE, 0);
+        let res = page.frame_unmap();
+        match res {
+            Ok(_) => {
+                self.mapped_page.remove(&vaddr);
+            }
+            _ => res.unwrap(),
+        }
+    }
+
     pub fn map_stack(
         &mut self,
         file: &ElfFile,
@@ -150,11 +191,12 @@ impl Sel4Task {
         args: &[&str],
     ) -> usize {
         start = start / PAGE_SIZE * PAGE_SIZE;
-        let mut stack_ptr = DEFAULT_USER_STACK_SIZE;
+        let mut stack_ptr = end;
 
         for vaddr in (start..end).step_by(PAGE_SIZE) {
             let page_cap = alloc_cap::<cap_type::Granule>();
-            if vaddr == DEFAULT_USER_STACK_SIZE - PAGE_SIZE {
+            if vaddr == end - PAGE_SIZE {
+                // The last page is used to store the arguments.
                 page_cap
                     .frame_map(
                         BootInfo::init_thread_vspace(),
@@ -220,7 +262,7 @@ impl Sel4Task {
                 // Unmap Frame
                 page_cap.frame_unmap().unwrap();
             }
-            self.map_page(vaddr, page_cap);
+            self.map_page(vaddr, page_cap, CapRights::all());
         }
         stack_ptr
     }
@@ -270,19 +312,12 @@ impl Sel4Task {
                             )
                         }
 
-                        unsafe {
-                            if vaddr < 0x1fc40 && vaddr + PAGE_SIZE > 0x1fc40 {
-                                let v = ((page_seat_vaddr() + 0xc40) as *mut u32).read_volatile();
-                                debug_println!("v: {:#x}", v);
-                            }
-                        }
-
                         page_cap.frame_unmap().unwrap();
 
                         offset += rsize;
                     }
 
-                    self.map_page(vaddr / PAGE_SIZE * PAGE_SIZE, page_cap);
+                    self.map_page(vaddr / PAGE_SIZE * PAGE_SIZE, page_cap, CapRights::all());
 
                     mapped_page.insert(vaddr / PAGE_SIZE * PAGE_SIZE, page_cap);
 
@@ -292,14 +327,10 @@ impl Sel4Task {
             });
     }
 
-    pub fn brk(&mut self, value: usize) -> usize {
-        if value == 0 {
-            return self.heap;
-        }
+    pub fn brk(&mut self, value: usize) {
         for vaddr in (self.heap..value).step_by(0x1000) {
             let page_cap = alloc_cap::<cap_type::Granule>();
-            self.map_page(vaddr, page_cap);
+            self.map_page(vaddr, page_cap, CapRights::all());
         }
-        value
     }
 }
