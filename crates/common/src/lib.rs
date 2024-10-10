@@ -4,6 +4,9 @@ use core::cell::UnsafeCell;
 
 use sel4::{with_ipc_buffer, with_ipc_buffer_mut, CPtrBits, MessageInfo, GRANULE_SIZE};
 
+mod uspace;
+pub use uspace::*;
+
 // FIXME: Make this variable more generic.
 pub const VIRTIO_MMIO_ADDR: usize = 0xa003e00;
 

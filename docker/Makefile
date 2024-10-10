@@ -7,14 +7,14 @@
 work_root := ..
 
 id := rust-root-task-demo
-image_tag := $(id)
-container_name := $(id)
 ARCH   ?= riscv64
 ifeq ($(ARCH), riscv64)
 TARGET := riscv64imac-unknown-none-elf
 else ifeq($(ARCH), aarch64)
 TARGET := aarch64-unknown-none
 endif
+image_tag := $(id)-$(ARCH)
+container_name := $(id)-$(ARCH)
 uid := $(shell id -u)
 gid := $(shell id -g)
 
@@ -24,6 +24,9 @@ none:
 .PHONY: build
 build:
 	docker build \
+		--build-arg HTTP_PROXY=http://127.0.0.1:7890 \
+		--build-arg HTTPS_PROXY=http://127.0.0.1:7890 \
+		--network host \
 		--build-arg UID=$(uid) --build-arg GID=$(gid) \
 		--build-arg ARCH=$(ARCH) --build-arg TARGET=$(TARGET) \
 		-t $(image_tag) .
@@ -31,6 +34,9 @@ build:
 .PHONY: run
 run: build
 	docker run -d --name $(container_name) \
+		-e http_proxy=http://127.0.0.1:7890 \
+		-e https_proxy=http://127.0.0.1:7890 \
+		--network host \
 		--mount type=bind,src=$(abspath $(work_root)),dst=/work \
 		$(image_tag) sleep inf
 
@@ -47,6 +53,9 @@ rm-container:
 .PHONY: test
 test: build
 	docker run --rm \
+		--build-arg HTTP_PROXY=http://127.0.0.1:7890 \
+		--build-arg HTTPS_PROXY=http://127.0.0.1:7890 \
+		--network host \
 		--mount type=bind,readonly,src=$(abspath $(work_root)),dst=/work \
 		-i $(image_tag) \
 		make test BUILD=/tmp/build

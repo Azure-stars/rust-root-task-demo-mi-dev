@@ -57,7 +57,7 @@ version = "0.68.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "726e4313eb6ec35d2730258ad4e15b547ee75d6afaa1361a922e78e59b7d8078"
 dependencies = [
- "bitflags 2.4.1",
+ "bitflags 2.6.0",
  "cexpr",
  "clang-sys",
  "lazy_static",
@@ -88,9 +88,9 @@ checksum = "bef38d45163c2f1dde094a7dfd33ccf595c92905c8f8f4fdc18d06fb1037718a"
 
 [[package]]
 name = "bitflags"
-version = "2.4.1"
+version = "2.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "327762f6e5a765692301e5bb513e0d9fef63be86bbc14528052b1cd3e6f03e07"
+checksum = "b048fb63fd8b5923fc5aa7b340d8e156aec7ec02f0c78fa8a6ddc2613f6f71de"
 
 [[package]]
 name = "blk-thread"
@@ -532,9 +532,11 @@ name = "kernel-thread"
 version = "0.1.0"
 dependencies = [
  "alloc-helper",
+ "bitflags 2.6.0",
  "common",
  "crate-consts",
  "log",
+ "memory_addr",
  "sel4",
  "sel4-initialize-tls-on-stack",
  "sel4-logging",
@@ -619,6 +621,12 @@ name = "memchr"
 version = "2.6.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f665ee40bc4a3c5590afb1e9677db74a508659dfd71e126420da8274909a0167"
+
+[[package]]
+name = "memory_addr"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6f769efcf10b9dfb4c913bebb409cda77b1a3f072b249bf5465e250bcb30eb49"
 
 [[package]]
 name = "minimal-lexical"
@@ -872,7 +880,7 @@ version = "0.38.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2b426b0506e5d50a7d8dafcf2e81471400deb602392c7dd110815afb4eaf02a3"
 dependencies = [
- "bitflags 2.4.1",
+ "bitflags 2.6.0",
  "errno",
  "libc",
  "linux-raw-sys",
@@ -1293,6 +1301,7 @@ dependencies = [
  "sel4",
  "sel4-panicking",
  "sel4-panicking-env",
+ "syscalls",
 ]
 
 [[package]]
@@ -1376,6 +1385,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "test-thread"
+version = "0.1.0"
+dependencies = [
+ "alloc-helper",
+ "common",
+ "log",
+ "sel4",
+ "sel4-panicking",
+ "sel4-panicking-env",
+ "syscalls",
+]
+
+[[package]]
 name = "thiserror"
 version = "1.0.50"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1451,7 +1473,7 @@ name = "virtio-drivers"
 version = "0.7.1"
 source = "git+https://github.com/rcore-os/virtio-drivers?rev=61ece50#61ece509c40f32c03378a7a037ef9863ed5deba7"
 dependencies = [
- "bitflags 2.4.1",
+ "bitflags 2.6.0",
  "log",
  "zerocopy",
 ]

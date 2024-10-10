@@ -17,5 +17,7 @@ members = [
     "crates/task-helper", 
     "crates/blk-thread", 
     "crates/crate-consts", 
-    "crates/net-thread", "crates/http-server",
+    "crates/net-thread",
+    "crates/http-server",
+    "crates/test-thread",
 ]

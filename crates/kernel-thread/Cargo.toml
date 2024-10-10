@@ -25,3 +25,5 @@ xmas-elf = "0.9.1"
 common = { path = "../common" }
 syscalls = { version = "0.6", default-features = false }
 crate-consts = { path = "../crate-consts" }
+bitflags = "2.6"
+memory_addr = "0.3"

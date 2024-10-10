@@ -1,5 +1,5 @@
 [package]
-name = "shim-comp"
+name = "test-thread"
 version = "0.1.0"
 edition = "2021"
 
@@ -7,7 +7,9 @@ edition = "2021"
 
 [dependencies]
 sel4 = { git = "https://github.com/rel4team/rust-sel4", branch = "mi_dev" }
+log = "0.4"
+syscalls = { version = "0.6", default-features = false }
 sel4-panicking = { git = "https://github.com/rel4team/rust-sel4", branch = "mi_dev" }
 sel4-panicking-env = { git = "https://github.com/rel4team/rust-sel4", branch = "mi_dev" }
+alloc-helper = { path = "../alloc-helper" }
 common = { path = "../common" }
-syscalls = { version = "0.6", default-features = false }
