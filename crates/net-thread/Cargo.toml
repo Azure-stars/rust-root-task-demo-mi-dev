@@ -16,7 +16,11 @@ spin = { version = "0.9.8" }
 buddy_system_allocator = "0.10.0"
 log = "0.4"
 common = { path = "../common" }
-virtio-drivers = { git = "https://github.com/rcore-os/virtio-drivers", rev = "61ece50"}
+lazyinit = "0.2"
+axdriver_virtio = { git = "https://github.com/arceos-org/axdriver_crates.git", tag = "v0.1.0", features = ["net"] }
+axdriver_net = { git = "https://github.com/arceos-org/axdriver_crates.git", tag = "v0.1.0" }
+axerrno = "0.1"
+virtio-drivers = "0.7.4"
 
 # Http Server Dependencies
 httparse = { version = "1.8.0", default-features = false }
@@ -30,6 +34,17 @@ sel4-shared-ring-buffer-block-io = { git = "https://github.com/rel4team/rust-sel
 sel4-shared-ring-buffer-smoltcp = { git = "https://github.com/rel4team/rust-sel4", branch = "mi_dev" }
 
 [dependencies.smoltcp]
-version = "0.10.0"
+git = "https://github.com/rcore-os/smoltcp.git"
+rev = "8bf9a9a"
 default-features = false
-features = ["proto-ipv4", "proto-dhcpv4", "proto-dns", "socket-dhcpv4", "socket-dns", "socket-tcp"]
+features = [
+  "alloc", "log",   # no std
+  "medium-ethernet",
+  "medium-ip",
+  "proto-ipv4",
+  "proto-ipv6",
+  "socket-raw", "socket-icmp", "socket-udp", "socket-tcp", "socket-dns", "proto-igmp",
+  # "fragmentation-buffer-size-65536", "proto-ipv4-fragmentation",
+  # "reassembly-buffer-size-65536", "reassembly-buffer-count-32",
+  # "assembler-max-segment-count-32",
+]

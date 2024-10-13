@@ -1,20 +1,19 @@
+use axdriver_virtio::{BufferDirection, PhysAddr, VirtIoHal};
 use common::RootMessageLabel;
 use core::{
     ptr::NonNull,
     sync::atomic::{AtomicUsize, Ordering},
 };
 use sel4::{debug_println, Endpoint};
-use virtio_drivers::{BufferDirection, Hal, PhysAddr, PAGE_SIZE};
-
 static DMA_ADDR: AtomicUsize = AtomicUsize::new(0x1_0000_3000);
 
-pub struct HalImpl;
+pub struct VirtIoHalImpl;
 
-unsafe impl Hal for HalImpl {
+unsafe impl VirtIoHal for VirtIoHalImpl {
     fn dma_alloc(pages: usize, _direction: BufferDirection) -> (PhysAddr, NonNull<u8>) {
         debug_println!("DMA Alloc Page: {}", pages);
         let vaddr = DMA_ADDR.load(Ordering::Acquire);
-        DMA_ADDR.store(vaddr + pages * PAGE_SIZE, Ordering::Release);
+        DMA_ADDR.store(vaddr + pages * 0x1000, Ordering::Release);
         let ep = Endpoint::from_bits(18);
         let root_message =
             RootMessageLabel::try_from(&ep.call(RootMessageLabel::TranslateAddr(vaddr).build()));
@@ -30,7 +29,7 @@ unsafe impl Hal for HalImpl {
     unsafe fn dma_dealloc(_paddr: PhysAddr, vaddr: NonNull<u8>, pages: usize) -> i32 {
         let vaddr = vaddr.as_ptr() as usize;
         let pre_addr = DMA_ADDR.load(Ordering::Acquire);
-        assert!(vaddr + pages * PAGE_SIZE == pre_addr);
+        assert!(vaddr + pages * 0x1000 == pre_addr);
         DMA_ADDR.store(vaddr, Ordering::Release);
         0
     }
