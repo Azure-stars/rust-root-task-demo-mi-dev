@@ -115,7 +115,7 @@ fn main(bootinfo: &sel4::BootInfo) -> sel4::Result<!> {
 
     // Channel to send message to blk thread
     let blk_dev_ep = alloc_cap::<cap_type::Endpoint>();
-
+    let net_dev_ep = alloc_cap::<cap_type::Endpoint>();
     // Create kernel-thread and block-thread tasks.
     for file in TASK_FILES.iter() {
         tasks.push(build_kernel_thread(
@@ -132,6 +132,16 @@ fn main(bootinfo: &sel4::BootInfo) -> sel4::Result<!> {
     tasks[0]
         .abs_cptr(DEFAULT_CUSTOM_SLOT)
         .copy(&utils::abs_cptr(kernel_untyped), CapRights::all())
+        .unwrap();
+
+    tasks[0]
+        .abs_cptr(DEFAULT_CUSTOM_SLOT + 1)
+        .copy(&utils::abs_cptr(blk_dev_ep), CapRights::all())
+        .unwrap();
+
+    tasks[0]
+        .abs_cptr(DEFAULT_CUSTOM_SLOT + 2)
+        .copy(&utils::abs_cptr(net_dev_ep), CapRights::all())
         .unwrap();
 
     // Set Notification for Blk-Thread Task.
@@ -209,7 +219,7 @@ fn main(bootinfo: &sel4::BootInfo) -> sel4::Result<!> {
 
     tasks[2]
         .abs_cptr(DEFAULT_CUSTOM_SLOT + 2)
-        .copy(&utils::abs_cptr(blk_dev_ep), CapRights::all())
+        .copy(&utils::abs_cptr(net_dev_ep), CapRights::all())
         .unwrap();
 
     sys_null(-10);

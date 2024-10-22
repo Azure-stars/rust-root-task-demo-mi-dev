@@ -1,8 +1,7 @@
 use core::cmp;
 
-use common::{USPACE_HEAP_BASE, USPACE_STACK_SIZE, USPACE_STACK_TOP};
-use crate_consts::DEFAULT_THREAD_FAULT_EP;
-use sel4::{cap_type, debug_println, BootInfo, CNodeCapData, CapRights, Endpoint};
+use common::{USPACE_STACK_SIZE, USPACE_STACK_TOP};
+use sel4::{cap_type, debug_println, BootInfo, CNodeCapData, CapRights};
 use xmas_elf::ElfFile;
 
 use crate::{object_allocator::alloc_cap, syscall::SysResult, task::Sel4Task};
@@ -124,7 +123,7 @@ pub(crate) fn sys_exec(
         .fold(0, |acc, x| cmp::max(acc, x.address() + x.size()));
 
     let ipc_buffer_addr = (max + 4096 - 1) / 4096 * 4096;
-    debug_println!("ipc_buffer_addr: {:#x?}", ipc_buffer_addr);
+    debug_println!("ipc_buffer_addr in User: {:#x?}", ipc_buffer_addr);
     new_task.map_page(ipc_buffer_addr as _, ipc_buffer_cap, CapRights::all());
 
     // Configure the child task
@@ -170,7 +169,7 @@ pub(crate) fn sys_exec(
 
     new_task.tcb.tcb_set_affinity(0).unwrap();
     new_task.tcb.debug_name(b"before name");
-    // sel4::debug_snapshot();
+
     task.exit = Some(0);
 
     new_task.tcb.tcb_resume().unwrap();

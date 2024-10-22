@@ -1,6 +1,7 @@
 use syscalls::{Errno, Sysno};
 mod fs;
 mod mm;
+mod net;
 mod thread;
 use crate::task::Sel4Task;
 
@@ -34,6 +35,31 @@ pub fn handle_ipc_call(
         Sysno::set_tid_address => thread::sys_set_tid_address(task, args[0] as _),
         Sysno::getuid => thread::sys_getuid(task),
         Sysno::geteuid => thread::sys_geteuid(task),
+
+        Sysno::socket => net::sys_socket(task, args[0] as _, args[1] as _, args[2] as _),
+        Sysno::accept => net::sys_accept(task, args[0] as _, args[1] as _, args[2] as _),
+        Sysno::bind => net::sys_bind(task, args[0] as _, args[1] as _, args[2] as _),
+        Sysno::connect => net::sys_connect(task, args[0] as _, args[1] as _, args[2] as _),
+        Sysno::listen => net::sys_listen(task, args[0] as _),
+        Sysno::sendto => net::sys_sendto(
+            task,
+            args[0] as _,
+            args[1] as _,
+            args[2] as _,
+            args[3] as _,
+            args[4] as _,
+            args[5] as _,
+        ),
+        Sysno::recvfrom => net::sys_recvfrom(
+            task,
+            args[0] as _,
+            args[1] as _,
+            args[2] as _,
+            args[3] as _,
+            args[4] as _,
+            args[5] as _,
+        ),
+        Sysno::shutdown => net::sys_shutdown(task, args[0] as _, args[1] as _),
         _ => Err(Errno::ENOSYS),
     }
 }

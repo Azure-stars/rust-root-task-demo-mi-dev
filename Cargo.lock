@@ -63,7 +63,7 @@ source = "git+https://github.com/arceos-org/axdriver_crates.git?tag=v0.1.0#78686
 dependencies = [
  "axdriver_base",
  "log",
- "spin 0.9.8",
+ "spin",
 ]
 
 [[package]]
@@ -139,7 +139,7 @@ dependencies = [
  "sel4-logging",
  "sel4-panicking",
  "sel4-panicking-env",
- "spin 0.9.8",
+ "spin",
  "virtio-drivers 0.7.1",
 ]
 
@@ -158,7 +158,7 @@ version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a7913f22349ffcfc6ca0ca9a656ec26cfbba538ed49c31a273dff2c5d1ea83d9"
 dependencies = [
- "spin 0.9.8",
+ "spin",
 ]
 
 [[package]]
@@ -510,7 +510,7 @@ dependencies = [
  "atomic-polyfill",
  "hash32 0.2.1",
  "rustc_version",
- "spin 0.9.8",
+ "spin",
  "stable_deref_trait",
 ]
 
@@ -558,7 +558,7 @@ dependencies = [
  "sel4-panicking",
  "sel4-panicking-env",
  "smoltcp 0.10.0",
- "spin 0.9.8",
+ "spin",
  "virtio-drivers 0.7.1",
 ]
 
@@ -585,29 +585,31 @@ name = "kernel-thread"
 version = "0.1.0"
 dependencies = [
  "alloc-helper",
+ "axerrno",
  "bitflags 2.6.0",
  "common",
  "crate-consts",
  "log",
  "memory_addr",
+ "num_enum 0.7.3",
  "sel4",
  "sel4-initialize-tls-on-stack",
  "sel4-logging",
  "sel4-panicking",
  "sel4-panicking-env",
  "sel4-sys",
- "spin 0.9.8",
+ "spin",
  "syscalls",
  "xmas-elf",
 ]
 
 [[package]]
 name = "lazy_static"
-version = "1.4.0"
+version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e2abad23fbc42b3700f2f279844dc832adb2b2eb069b2df918f455c4e18cc646"
+checksum = "bbd2bcb4c963f2ddae06a2efc7e9f3591312473c50c6685e1f298068316e66fe"
 dependencies = [
- "spin 0.5.2",
+ "spin",
 ]
 
 [[package]]
@@ -708,6 +710,7 @@ dependencies = [
  "httparse",
  "lazyinit",
  "log",
+ "memory_addr",
  "sel4",
  "sel4-async-block-io-fat",
  "sel4-async-network",
@@ -720,7 +723,7 @@ dependencies = [
  "sel4-shared-ring-buffer-block-io",
  "sel4-shared-ring-buffer-smoltcp",
  "smoltcp 0.11.0",
- "spin 0.9.8",
+ "spin",
  "virtio-drivers 0.7.4",
 ]
 
@@ -740,7 +743,16 @@ version = "0.5.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1f646caf906c20226733ed5b1374287eb97e3c2a5c227ce668c1f2ce20ae57c9"
 dependencies = [
- "num_enum_derive",
+ "num_enum_derive 0.5.11",
+]
+
+[[package]]
+name = "num_enum"
+version = "0.7.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4e613fc340b2220f734a8595782c551f1250e969d87d3be1ae0579e8d4065179"
+dependencies = [
+ "num_enum_derive 0.7.3",
 ]
 
 [[package]]
@@ -752,6 +764,17 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 1.0.109",
+]
+
+[[package]]
+name = "num_enum_derive"
+version = "0.7.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "af1844ef2428cc3e1cb900be36181049ef3d3193c63e43026cfe202983b27a56"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.39",
 ]
 
 [[package]]
@@ -917,7 +940,7 @@ dependencies = [
  "sel4",
  "sel4-initialize-tls-on-stack",
  "sel4-root-task",
- "spin 0.9.8",
+ "spin",
  "task-helper",
  "xmas-elf",
 ]
@@ -982,7 +1005,7 @@ dependencies = [
  "gpt_disk_types",
  "log",
  "lru",
- "num_enum",
+ "num_enum 0.5.11",
 ]
 
 [[package]]
@@ -1251,7 +1274,7 @@ name = "sel4-shared-ring-buffer-block-io-types"
 version = "0.1.0"
 source = "git+https://github.com/rel4team/rust-sel4?branch=mi_dev#65ee79e44837c6d4c5974dc9cb3a9f73ebce6c87"
 dependencies = [
- "num_enum",
+ "num_enum 0.5.11",
  "sel4-shared-ring-buffer",
  "zerocopy",
 ]
@@ -1403,12 +1426,6 @@ dependencies = [
 
 [[package]]
 name = "spin"
-version = "0.5.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6e63cff320ae2c57904679ba7cb63280a3dc4613885beafb148ee7bf9aa9042d"
-
-[[package]]
-name = "spin"
 version = "0.9.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6980e8d7511241f8acf4aebddbb1ff938df5eebe98691418c4468d0b72a96a67"
@@ -1457,7 +1474,7 @@ dependencies = [
  "crate-consts",
  "sel4",
  "sel4-sync",
- "spin 0.9.8",
+ "spin",
  "xmas-elf",
 ]
 

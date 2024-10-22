@@ -1,7 +1,7 @@
 use core::cmp;
 
 use common::{CustomMessageLabel, USPACE_STACK_SIZE, USPACE_STACK_TOP};
-use crate_consts::DEFAULT_THREAD_FAULT_EP;
+
 use sel4::{
     cap_type, debug_println, r#yield, reply, with_ipc_buffer, with_ipc_buffer_mut, BootInfo,
     CNodeCapData, CapRights, Endpoint, Fault, MessageInfo, Result, Word,
@@ -60,7 +60,7 @@ pub fn test_child(ep: Endpoint) -> Result<()> {
         .fold(0, |acc, x| cmp::max(acc, x.address() + x.size()));
     let ipc_buffer_addr = (max + 4096 - 1) / 4096 * 4096;
     task.map_page(ipc_buffer_addr as _, ipc_buffer_cap, CapRights::all());
-    debug_println!("ipc_buffer_addr: {:#x?}", ipc_buffer_addr);
+
     // Configure the child task
     task.tcb.tcb_configure(
         ep.cptr(),

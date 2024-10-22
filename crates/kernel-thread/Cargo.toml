@@ -27,3 +27,5 @@ syscalls = { version = "0.6", default-features = false }
 crate-consts = { path = "../crate-consts" }
 bitflags = "2.6"
 memory_addr = "0.3"
+axerrno = "0.1"
+num_enum = { version = "0.7", default-features = false }
