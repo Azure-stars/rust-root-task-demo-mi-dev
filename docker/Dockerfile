@@ -4,36 +4,16 @@
 # SPDX-License-Identifier: BSD-2-Clause
 #
 
-FROM debian:bookworm
+FROM trustworthysystems/sel4
 
 RUN apt-get update -q && apt-get install -y --no-install-recommends \
-    build-essential \
-    curl \
-    git \
-    # for seL4
-    gcc-aarch64-linux-gnu \
-    python3-dev \
-    python3-venv \
-    cmake \
-    ninja-build \
-    device-tree-compiler \
-    libxml2-utils \
-    qemu-utils \
-    qemu-system-arm \
-    qemu-efi-aarch64 \
-    ipxe-qemu \
-    # for bindgen
-    libclang-dev \
-    # for test script
-    python3-pexpect \
-    # for hacking
+    wget \
+    sudo man vim \
     bash-completion \
-    man \
-    sudo \
     && rm -rf /var/lib/apt/lists/*
 
-WORKDIR /tmp
-
+# RUN curl -sSf https://sh.rustup.rs | \
+#         bash -s -- -y --no-modify-path --default-toolchain none
 RUN curl -sSf https://sh.rustup.rs | \
         bash -s -- -y --no-modify-path \
             --default-toolchain nightly-2024-09-01 \
@@ -41,7 +21,9 @@ RUN curl -sSf https://sh.rustup.rs | \
 
 ENV PATH=/root/.cargo/bin:$PATH
 
-ENV SEL4_INSTALL_DIR=/opt/seL4
+RUN mkdir /deps
+
+WORKDIR /deps
 
 RUN set -eux; \
     git clone \
@@ -50,24 +32,43 @@ RUN set -eux; \
     cd seL4; \
     git checkout cd6d3b8c25d49be2b100b0608cf0613483a6fffa;
 
+RUN apt-get update -q && apt-get install -y --no-install-recommends gcc-riscv64-linux-gnu && rm -rf /var/lib/apt/lists/*
+
+ENV SEL4_INSTALL_DIR=/deps/seL4/install
+
+ARG ARCH=aarch64
+ARG TARGET=aarch64-unknown-none
+
+COPY kernel-settings-${ARCH}.cmake ./kernel-settings.cmake
 RUN set -eux; \
     cd seL4; \
-    python3 -m venv pyenv; \
-    export PATH=$(realpath ./pyenv/bin):$PATH; \
-    pip install tools/python-deps; \
     cmake \
-        -DCROSS_COMPILER_PREFIX=aarch64-linux-gnu- \
-        -DCMAKE_INSTALL_PREFIX=$SEL4_INSTALL_DIR \
-        -DKernelPlatform=qemu-arm-virt \
-        -DKernelArmHypervisorSupport=ON \
-        -DKernelVerificationBuild=OFF \
-        -DARM_CPU=cortex-a57 \
+        -DCROSS_COMPILER_PREFIX=${ARCH}-linux-gnu- \
+        -DCMAKE_INSTALL_PREFIX=install \
+        -C ../kernel-settings.cmake \
         -G Ninja \
         -S . \
         -B build; \
     ninja -C build all; \
-    ninja -C build install; \
-    rm -rf $(pwd);
+    ninja -C build install;
+
+# RUN set -eux; \
+#     url="https://github.com/rel4team/rust-sel4"; \
+#     branch="mi_dev"; \
+#     remote_options="--git $url --branch $branch"; \
+#     CC=${ARCH}-linux-gnu-gcc \
+#     SEL4_PREFIX=$SEL4_INSTALL_DIR \
+#         cargo install \
+#             -Z build-std=core,alloc,compiler_builtins \
+#             -Z build-std-features=compiler-builtins-mem \
+#             --target ${TARGET} \
+#             --root . \
+#             $remote_options \
+#             sel4-kernel-loader; \
+#     cargo install \
+#         --root . \
+#         $remote_options \
+#         sel4-kernel-loader-add-payload;
 
 RUN set -eux; \
     url="https://github.com/seL4/rust-sel4"; \
@@ -85,38 +86,48 @@ RUN set -eux; \
         $common_args \
         sel4-kernel-loader-add-payload;
 
+# Clone rel4 kernel
+RUN set -eux; \
+    git clone \
+        https://github.com/rel4team/rel4_kernel.git -b mi_dev \
+        --config advice.detachedHead=false;
+RUN set -eux; \
+    git clone \
+        https://github.com/rel4team/seL4_c_impl.git \
+        --config advice.detachedHead=false -b mi_dev;
+
+# Build rel4 kernel. Just for riscv64 temporarily
+COPY kernel-settings-riscv64.cmake .
+RUN set -eux; \
+    cd rel4_kernel;\
+    rustup target add riscv64imac-unknown-none-elf; \
+    make run;\
+    cd ../seL4_c_impl; \
+    cmake \
+        -DCROSS_COMPILER_PREFIX=riscv64-linux-gnu- \
+        -DCMAKE_INSTALL_PREFIX=/opt/reL4 \
+        -DKernelPlatform=spike \
+        -C ../kernel-settings-riscv64.cmake \
+        -G Ninja \
+        -S . \
+        -B build; \
+    ninja -C build all; \
+    ninja -C build install; \
+    rm -rf $(pwd);
+
 ARG UID
 ARG GID
 
-RUN set -eux; \
-    if [ $UID -eq 0 ]; then \
-        if [ $GID -ne 0 ]; then \
-            echo "error: \$UID == 0 but \$GID != 0" >&2; \
-            exit 1; \
-        fi; \
-    else \
-        if getent passwd $UID; then \
-            echo "error: \$UID $UID already exists" >&2; \
-            exit 1; \
-        fi; \
-        if ! getent group $GID; then \
-            groupadd --gid $GID x; \
-        fi; \
-        useradd --uid $UID --gid $GID --groups sudo --create-home x; \
-    fi;
+RUN groupadd -f -g $GID x && useradd -u $UID -g $GID -G sudo -m -p x x
+RUN echo '%sudo ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers # for convenience
 
-RUN echo '%sudo ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers
+USER x
 
-USER $UID
-
-RUN set -eux; \
-    if [ $UID -ne 0 ]; then \
-        curl -sSf https://sh.rustup.rs | \
-            bash -s -- -y --no-modify-path --default-toolchain none; \
-    fi;
+# This time, for the non-root user
+RUN curl -sSf https://sh.rustup.rs | \
+        bash -s -- -y --no-modify-path --default-toolchain none
 
 ENV PATH=/home/x/.cargo/bin:$PATH
-
-ENV SHELL=/bin/bash
+ENV ARCH=${ARCH}
 
 WORKDIR /work
