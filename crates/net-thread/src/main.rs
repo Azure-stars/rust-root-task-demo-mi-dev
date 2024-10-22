@@ -2,7 +2,7 @@
 #![no_main]
 #![feature(never_type)]
 #![feature(new_uninit)]
-
+#![feature(ip_bits)]
 #[macro_use]
 extern crate alloc;
 extern crate sel4_panicking;
@@ -10,6 +10,7 @@ extern crate sel4_panicking;
 // mod mime;
 // mod run;
 // mod server;
+mod ipc;
 mod smoltcp_impl;
 mod virtio_impl;
 use core::ptr::NonNull;
@@ -84,38 +85,8 @@ fn main(ipc_buffer: IPCBuffer) -> sel4::Result<!> {
     );
 
     smoltcp_impl::init(virtio_net);
-    // smoltcp_impl::test_client();
-    smoltcp_impl::run_server();
-    // run::async_runtime_entry(virtio_net);
-    // // run::run_server(&mut virtio_net);
-    // loop {}
-    // let mut tx_buffer = virtio_net.new_tx_buffer(0x200);
+    ipc::run_ipc();
 
-    // for i in 0..100 {
-    //     tx_buffer.packet_mut()[i] = i as _;
-    // }
-
-    // // Register interrupt handler and notification
-    // let irq_notify = Notification::from_bits(DEFAULT_CUSTOM_SLOT);
-    // let irq_handler = IRQHandler::from_bits(DEFAULT_CUSTOM_SLOT + 1);
-
-    // INIT_EP.call(RootMessageLabel::RegisterIRQ(irq_handler.bits(), VIRTIO_NET_IRQ as _).build());
-
-    // irq_handler.irq_handler_ack().unwrap();
-
-    // irq_handler
-    //     .irq_handler_set_notification(irq_notify)
-    //     .unwrap();
-
-    // // virtio_net.send(tx_buffer).unwrap();
-
-    // debug_println!("[Net Thread] Waiting for VIRTIO Net IRQ notification");
-    // irq_notify.wait();
-    // irq_handler.irq_handler_ack().unwrap();
-    // virtio_net.ack_interrupt();
-    // debug_println!("[Net Thread] Received for VIRTIO Net IRQ notification");
-
-    // sel4::BootInfo::init_thread_tcb().tcb_suspend()?;
     unreachable!()
 }
 

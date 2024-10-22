@@ -11,8 +11,10 @@ use smoltcp::socket::tcp::{self, ConnectError, State};
 use smoltcp::wire::{IpEndpoint, IpListenEndpoint};
 use spin::Mutex;
 
+use crate::smoltcp_impl::SOCKET_SET;
+
 use super::addr::{from_core_sockaddr, into_core_sockaddr, is_unspecified, UNSPECIFIED_ENDPOINT};
-use super::{PollState, SocketSetWrapper, LISTEN_TABLE, SOCKET_SET};
+use super::{PollState, SocketSetWrapper, LISTEN_TABLE};
 
 // State transitions:
 // CLOSED -(connect)-> BUSY -> CONNECTING -> CONNECTED -(shutdown)-> BUSY -> CLOSED
@@ -49,10 +51,11 @@ unsafe impl Sync for TcpSocket {}
 #[allow(unused)]
 impl TcpSocket {
     /// Creates a new TCP socket.
-    pub const fn new() -> Self {
+    pub fn new() -> Self {
+        let socket_handle = SOCKET_SET.add(SocketSetWrapper::new_tcp_socket());
         Self {
             state: AtomicU8::new(STATE_CLOSED),
-            handle: UnsafeCell::new(None),
+            handle: UnsafeCell::new(Some(socket_handle)),
             local_addr: UnsafeCell::new(UNSPECIFIED_ENDPOINT),
             peer_addr: UnsafeCell::new(UNSPECIFIED_ENDPOINT),
             nonblock: AtomicBool::new(false),
@@ -61,11 +64,7 @@ impl TcpSocket {
     }
 
     /// Creates a new TCP socket that is already connected.
-    const fn new_connected(
-        handle: SocketHandle,
-        local_addr: IpEndpoint,
-        peer_addr: IpEndpoint,
-    ) -> Self {
+    fn new_connected(handle: SocketHandle, local_addr: IpEndpoint, peer_addr: IpEndpoint) -> Self {
         Self {
             state: AtomicU8::new(STATE_CONNECTED),
             handle: UnsafeCell::new(Some(handle)),
@@ -585,6 +584,7 @@ impl TcpSocket {
     }
 
     #[inline]
+    #[allow(unused)]
     /// Whether the socket is closed.
     pub fn is_closed(&self) -> bool {
         self.get_state() == STATE_CLOSED
