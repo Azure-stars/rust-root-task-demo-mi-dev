@@ -1,9 +1,3 @@
-#
-# Copyright 2023, Colias Group, LLC
-#
-# SPDX-License-Identifier: BSD-2-Clause
-#
-
 FROM debian:bookworm
 
 RUN apt-get update -q && apt-get install -y --no-install-recommends \
@@ -41,7 +35,10 @@ RUN curl -sSf https://sh.rustup.rs | \
 
 ENV PATH=/root/.cargo/bin:$PATH
 
+# the directory where seL4 will be installed
 ENV SEL4_INSTALL_DIR=/opt/seL4
+# the directory where reL4 will be installed
+ENV REL4_INSTALL_DIR=/opt/reL4
 
 RUN set -eux; \
     git clone \
@@ -85,10 +82,9 @@ RUN set -eux; \
         $common_args \
         sel4-kernel-loader-add-payload;
 
-# Clone rel4 kernel
 RUN set -eux; \
     git clone \
-        https://github.com/rel4team/rel4_kernel.git -b mi_dev \
+        https://github.com/rel4team/mi-dev-integral-rel4.git rel4_kernel -b mi_dev \
         --config advice.detachedHead=false;
 RUN set -eux; \
     git clone \
@@ -96,32 +92,31 @@ RUN set -eux; \
         --config advice.detachedHead=false -b update-kernel;
 
 COPY kernel-settings-aarch64.cmake .
-# RUN set -eux; \
-#     cd rel4_kernel;\
-#     python3 -m venv pyenv; \
-#     export PATH=$(realpath ./pyenv/bin):$PATH; \
-#     pip install pyyaml; \
-#     pip install pyfdt; \
-#     pip install jinja2; \
-#     pip install six; \
-#     pip install future; \
-#     pip install ply; \
-#     rustup target add aarch64-unknown-none; \
-#     make run ARCH=aarch64;\
-#     cd ../seL4_c_impl; \
-#     echo "Building seL4_c_impl"; \
-#     rm -rf build; \
-#     cmake \
-#         -DCROSS_COMPILER_PREFIX=aarch64-linux-gnu- \
-#         -DCMAKE_INSTALL_PREFIX=/opt/reL4 \
-#         -C ./kernel-settings-aarch64.cmake \
-#         -G Ninja \
-#         -S . \
-#         -B build; \
-#     ninja -C build all; \
-#     ninja -C build install; \
-#     rm -rf $(pwd);
-
+RUN set -eux; \
+    cd rel4_kernel;\
+    python3 -m venv pyenv; \
+    export PATH=$(realpath ./pyenv/bin):$PATH; \
+    pip install pyyaml; \
+    pip install pyfdt; \
+    pip install jinja2; \
+    pip install six; \
+    pip install future; \
+    pip install ply; \
+    rustup install nightly-2024-01-31; \
+    rustup default nightly-2024-01-31; \
+    rustup target add aarch64-unknown-none-softfloat; \
+    cargo build --release --target aarch64-unknown-none-softfloat; \
+    cd ../seL4_c_impl; \
+    rm -rf build; \
+    cmake \
+        -DCROSS_COMPILER_PREFIX=aarch64-linux-gnu- \
+        -DCMAKE_INSTALL_PREFIX=$REL4_INSTALL_DIR \
+        -C ./kernel-settings-aarch64.cmake \
+        -G Ninja \
+        -S . \
+        -B build; \
+    ninja -C build all; \
+    ninja -C build install;
 
 ARG UID
 ARG GID
