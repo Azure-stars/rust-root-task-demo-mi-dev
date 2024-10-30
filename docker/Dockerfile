@@ -84,16 +84,17 @@ RUN set -eux; \
 
 RUN set -eux; \
     git clone \
-        https://github.com/rel4team/mi-dev-integral-rel4.git rel4_kernel -b mi_dev \
+        https://github.com/rel4team/mi-dev-integral-rel4.git rel4_kernel -b microkit \
         --config advice.detachedHead=false;
 RUN set -eux; \
     git clone \
         https://github.com/rel4team/seL4_c_impl.git \
-        --config advice.detachedHead=false -b update-kernel;
+        --config advice.detachedHead=false -b microkit;
 
 COPY kernel-settings-aarch64.cmake .
 RUN set -eux; \
     cd rel4_kernel;\
+    git pull; \
     python3 -m venv pyenv; \
     export PATH=$(realpath ./pyenv/bin):$PATH; \
     pip install pyyaml; \
@@ -107,6 +108,7 @@ RUN set -eux; \
     rustup target add aarch64-unknown-none-softfloat; \
     cargo build --release --target aarch64-unknown-none-softfloat; \
     cd ../seL4_c_impl; \
+    git pull; \
     rm -rf build; \
     cmake \
         -DCROSS_COMPILER_PREFIX=aarch64-linux-gnu- \
@@ -117,6 +119,10 @@ RUN set -eux; \
         -B build; \
     ninja -C build all; \
     ninja -C build install;
+
+RUN set -eux; \
+    cp ${SEL4_INSTALL_DIR}/bin/sel4-kernel-loader \
+        ${SEL4_INSTALL_DIR}/bin/sel4-kernel-loader-add-payload ${REL4_INSTALL_DIR}/bin;
 
 ARG UID
 ARG GID

@@ -19,15 +19,16 @@ KERNEL ?= sel4
 
 ifeq ($(KERNEL), sel4)
 sel4_prefix := $(SEL4_INSTALL_DIR)
-else ifeq ($(KERNEL), rel4)
-sel4_prefix := /opt/reL4
-endif
-
 # Kernel loader binary artifacts provided by Docker container:
 # - `sel4-kernel-loader`: The loader binary, which expects to have a payload appended later via
 #   binary patch.
 # - `sel4-kernel-loader-add-payload`: CLI which appends a payload to the loader.
 loader_artifacts_dir := $(SEL4_INSTALL_DIR)/bin
+else ifeq ($(KERNEL), rel4)
+sel4_prefix := $(REL4_INSTALL_DIR)
+loader_artifacts_dir := $(REL4_INSTALL_DIR)/bin
+endif
+
 loader := $(loader_artifacts_dir)/sel4-kernel-loader
 loader_cli := $(loader_artifacts_dir)/sel4-kernel-loader-add-payload
 
