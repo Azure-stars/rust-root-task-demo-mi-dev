@@ -85,7 +85,8 @@ fn main(ipc_buffer: IPCBuffer) -> sel4::Result<!> {
     );
 
     smoltcp_impl::init(virtio_net);
-    ipc::run_ipc();
+    // ipc::run_ipc();
+    smoltcp_impl::test::test_client();
 
     unreachable!()
 }

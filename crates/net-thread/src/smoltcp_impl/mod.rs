@@ -8,8 +8,7 @@ mod bench;
 mod listen_table;
 mod loopback;
 mod tcp;
-#[cfg(test)]
-mod test;
+pub mod test;
 
 use axdriver_net::{NetBufPtr, NetDriverOps};
 use axdriver_virtio::{MmioTransport, VirtIoNetDev};

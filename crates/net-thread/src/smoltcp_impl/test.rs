@@ -3,8 +3,7 @@ use sel4::debug_println;
 
 use super::TcpSocket;
 
-#[test]
-fn test_client() {
+pub(crate) fn test_client() {
     const REQUEST: &str = "\
     GET / HTTP/1.1\r\n\
     Host: ident.me\r\n\
@@ -26,8 +25,7 @@ fn test_client() {
     debug_println!("response: {:?}", response);
 }
 
-#[test]
-fn run_server() {
+pub(crate) fn run_server() {
     fn http_server(stream: TcpSocket) {
         const CONTENT: &str = r#"<html>
     <head>
