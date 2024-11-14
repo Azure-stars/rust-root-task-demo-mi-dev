@@ -22,3 +22,4 @@ buddy_system_allocator = "0.10.0"
 xmas-elf = "0.9.1"
 include_bytes_aligned = "0.1.3"
 lazy_static = { version = "1.4.0", features = ["spin_no_std"] }
+object = { version = "0.36.1", default-features = false, features = ["read"] }

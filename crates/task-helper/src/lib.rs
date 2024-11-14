@@ -1,9 +1,8 @@
 #![no_std]
 #![feature(associated_type_defaults)]
 
-use core::{cmp, marker::PhantomData};
-
 use alloc::{collections::btree_map::BTreeMap, sync::Arc, vec::Vec};
+use core::{cmp, marker::PhantomData};
 use crate_consts::{DEFAULT_THREAD_FAULT_EP, DEFAULT_THREAD_IRQ_EP, DEFAULT_THREAD_NOTIFICATION};
 use sel4::{
     cap::{Granule, Notification, Null},

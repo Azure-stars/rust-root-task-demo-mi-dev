@@ -15,17 +15,17 @@ mod utils;
 
 use alloc::vec::Vec;
 use alloc_helper::define_allocator;
-use common::{AlignedPage, RootMessageLabel};
-use crate_consts::{DEFAULT_CNODE_SLOT_NUMS, DEFAULT_CUSTOM_SLOT};
+use common::AlignedPage;
 use include_bytes_aligned::include_bytes_aligned;
-use obj_allocator::{alloc_cap, OBJ_ALLOCATOR};
+use obj_allocator::{ObjectAllocator, OBJ_ALLOCATOR};
+use object::Object;
 use sel4::{
-    cap_type::{self, Endpoint, Untyped},
-    init_thread, reply, with_ipc_buffer, with_ipc_buffer_mut, CPtr, CapRights, MessageInfo,
-    UntypedDesc,
+    cap_type::{Endpoint, Untyped},
+    init_thread, CPtr, UntypedDesc,
 };
 use sel4_root_task::{debug_println, root_task, Never};
-use task::{build_kernel_thread, rebuild_cspace, run_tasks};
+use task::*;
+use utils::*;
 use xmas_elf::ElfFile;
 
 /// Default size of the global allocator
@@ -35,6 +35,9 @@ define_allocator! {
     /// Size is [DEFAULT_ALLOCATOR_SIZE]
     (GLOBAL_ALLOCATOR, DEFAULT_ALLOCATOR_SIZE)
 }
+
+/// The radix bits of the cnode in the task.
+const CNODE_RADIX_BITS: usize = 12;
 
 /// Empty seat for page frame allocation.
 /// FIXME: Support it for multi-threaded task.
@@ -111,94 +114,161 @@ fn main(bootinfo: &sel4::BootInfoPtr) -> sel4::Result<Never> {
     debug_println!("Root Task Untyped: {:?}", root_task_untyped);
 
     // Init Object Allocator
-    OBJ_ALLOCATOR.lock().init(
-        bootinfo.empty().start()..(DEFAULT_CNODE_SLOT_NUMS * DEFAULT_CNODE_SLOT_NUMS - 1),
-        root_task_untyped,
-    );
+    OBJ_ALLOCATOR
+        .lock()
+        .init(bootinfo.empty().range(), root_task_untyped);
 
     init_thread::slot::TCB.cap().debug_name(b"root");
-    rebuild_cspace();
 
-    let mut tasks = Vec::new();
+    let child_image = object::File::parse(TASK_FILES[0].1).unwrap();
 
-    let fault_ep = alloc_cap::<Endpoint>();
-    let irq_ep = alloc_cap::<Endpoint>();
+    // make 新线程的虚拟地址空间
+    let (child_vspace, ipc_buffer_addr, ipc_buffer_cap) = make_child_vspace(
+        &child_image,
+        sel4::init_thread::slot::VSPACE.cap(),
+        unsafe { init_free_page_addr(bootinfo) },
+        sel4::init_thread::slot::ASID_POOL.cap(),
+    );
 
-    for task in TASK_FILES.iter() {
-        tasks.push(build_kernel_thread(
-            (fault_ep, tasks.len() as _),
-            task.0,
-            ElfFile::new(task.1).expect("[root-task] build kernel thread: Invalid ELF file"),
-            irq_ep,
-        )?);
-    }
+    let child_cnode_size_bits = CNODE_RADIX_BITS;
+    // make 新线程的 CNode
+    let child_cnode = OBJ_ALLOCATOR
+        .lock()
+        .allocate_variable_sized::<sel4::cap_type::CNode>(child_cnode_size_bits);
 
-    // Transfer a untyped memory to kernel_untyped_memory.
-    tasks[0]
-        .abs_cptr(DEFAULT_CUSTOM_SLOT)
-        .copy(&utils::abs_cptr(kernel_untyped), CapRights::all())
+    let inter_task_nfn = OBJ_ALLOCATOR
+        .lock()
+        .allocate_fixed_sized::<sel4::cap_type::Notification>();
+
+    child_cnode
+        .relative_bits_with_depth(1, child_cnode_size_bits)
+        .mint(
+            &sel4::init_thread::slot::CNODE
+                .cap()
+                .relative(inter_task_nfn),
+            sel4::CapRights::write_only(),
+            0,
+        )
         .unwrap();
 
-    // Start tasks
-    run_tasks(&tasks);
+    let child_tcb = OBJ_ALLOCATOR
+        .lock()
+        .allocate_fixed_sized::<sel4::cap_type::Tcb>();
+
+    child_tcb
+        .tcb_configure(
+            sel4::init_thread::slot::NULL.cptr(),
+            child_cnode,
+            sel4::CNodeCapData::new(0, sel4::WORD_SIZE - child_cnode_size_bits),
+            child_vspace,
+            ipc_buffer_addr as sel4::Word,
+            ipc_buffer_cap,
+        )
+        .unwrap();
+
+    child_cnode
+        .relative_bits_with_depth(2, child_cnode_size_bits)
+        .mint(
+            &sel4::init_thread::slot::CNODE.cap().relative(child_tcb),
+            sel4::CapRights::all(),
+            0,
+        )
+        .unwrap();
+
+    let mut ctx = sel4::UserContext::default();
+    *ctx.pc_mut() = child_image.entry().try_into().unwrap();
+    child_tcb.tcb_write_all_registers(true, &mut ctx).unwrap();
+
+    inter_task_nfn.wait();
+
+    // rebuild_cspace();
+
+    // let mut tasks = Vec::new();
+
+    // let fault_ep = OBJ_ALLOCATOR.lock().allocate_fixed_sized::<Endpoint>();
+    // let irq_ep = OBJ_ALLOCATOR.lock().allocate_fixed_sized::<Endpoint>();
+
+    // for task in TASK_FILES.iter() {
+    //     tasks.push(build_kernel_thread(
+    //         (fault_ep, tasks.len() as _),
+    //         task.0,
+    //         task.1,
+    //         irq_ep,
+    //     )?);
+    // }
+
+    // // Transfer a untyped memory to kernel_untyped_memory.
+    // tasks[0]
+    //     .abs_cptr(DEFAULT_CUSTOM_SLOT)
+    //     .copy(&utils::abs_cptr(kernel_untyped), CapRights::all())
+    //     .unwrap();
+
+    // // Start tasks
+    // run_tasks(&tasks);
 
     // used for irq handler registration
-    let common_irq_handler = alloc_cap::<cap_type::IrqHandler>();
+    // let common_irq_handler = OBJ_ALLOCATOR
+    //     .lock()
+    //     .allocate_normal_cap::<sel4::cap_type::IrqHandler>();
 
-    loop {
-        debug_println!("Root Task: Waiting for message");
-        let (message, badge) = fault_ep.recv(());
-        if let Some(info) = RootMessageLabel::try_from(&message) {
-            match info {
-                RootMessageLabel::RegisterIRQ(irq_handler, irq_num) => {
-                    let slot = &tasks[badge as usize]
-                        .cnode
-                        .relative(CPtr::from_bits(irq_handler));
+    sel4::debug_println!("TEST_PASS");
 
-                    init_thread::slot::IRQ_CONTROL
-                        .cap()
-                        .irq_control_get(irq_num, slot)
-                        .unwrap();
+    sel4::init_thread::suspend_self()
 
-                    with_ipc_buffer_mut(|buffer| {
-                        reply(buffer, MessageInfo::new(0, 0, 0, 0));
-                    });
-                }
-                RootMessageLabel::TranslateAddr(addr) => {
-                    let phys_addr = tasks[badge as usize]
-                        .mapped_page
-                        .get(&(addr / 0x1000 * 0x1000));
-                    let message = RootMessageLabel::TranslateAddr(
-                        phys_addr.unwrap().frame_get_address().unwrap() + addr % 0x1000,
-                    )
-                    .build();
-                    with_ipc_buffer_mut(|buffer| reply(buffer, message));
-                }
-                RootMessageLabel::RegisterIRQWithCap(irq_num) => {
-                    with_ipc_buffer_mut(|buffer| {
-                        reply(buffer, MessageInfo::new(0, 0, 0, 0));
-                    });
+    // loop {
+    //     debug_println!("Root Task: Waiting for message");
+    //     let (message, badge) = fault_ep.recv(());
+    //     if let Some(info) = RootMessageLabel::try_from(&message) {
+    //         match info {
+    //             RootMessageLabel::RegisterIRQ(irq_handler, irq_num) => {
+    //                 let slot = &tasks[badge as usize]
+    //                     .cnode
+    //                     .relative(CPtr::from_bits(irq_handler));
 
-                    // send irq handler to kernel thread, TODO: use a common irq handler in constant.
-                    let slot = &init_thread::slot::CNODE.cap().relative(common_irq_handler);
-                    init_thread::slot::IRQ_CONTROL
-                        .cap()
-                        .irq_control_get(irq_num, slot)
-                        .unwrap();
+    //                 init_thread::slot::IRQ_CONTROL
+    //                     .cap()
+    //                     .irq_control_get(irq_num, slot)
+    //                     .unwrap();
 
-                    // set cap
-                    with_ipc_buffer_mut(|buffer| {
-                        buffer.caps_or_badges_mut()[0] = common_irq_handler.bits() as _;
-                    });
+    //                 with_ipc_buffer_mut(|buffer| {
+    //                     reply(buffer, MessageInfo::new(0, 0, 0, 0));
+    //                 });
+    //             }
+    //             RootMessageLabel::TranslateAddr(addr) => {
+    //                 let phys_addr = tasks[badge as usize]
+    //                     .mapped_page
+    //                     .get(&(addr / 0x1000 * 0x1000));
+    //                 let message = RootMessageLabel::TranslateAddr(
+    //                     phys_addr.unwrap().frame_get_address().unwrap() + addr % 0x1000,
+    //                 )
+    //                 .build();
+    //                 with_ipc_buffer_mut(|buffer| reply(buffer, message));
+    //             }
+    //             RootMessageLabel::RegisterIRQWithCap(irq_num) => {
+    //                 with_ipc_buffer_mut(|buffer| {
+    //                     reply(buffer, MessageInfo::new(0, 0, 0, 0));
+    //                 });
 
-                    // call
-                    let info = MessageInfo::new(0, 0, 1, 0);
-                    irq_ep.call(info);
-                }
-            }
-        } else {
-            let fault = with_ipc_buffer(|buffer| sel4::Fault::new(buffer, &message));
-            debug_println!("[root-task] recv fault {:#x?}", fault)
-        }
-    }
+    //                 // send irq handler to kernel thread, TODO: use a common irq handler in constant.
+    //                 let slot = &init_thread::slot::CNODE.cap().relative(common_irq_handler);
+    //                 init_thread::slot::IRQ_CONTROL
+    //                     .cap()
+    //                     .irq_control_get(irq_num, slot)
+    //                     .unwrap();
+
+    //                 // set cap
+    //                 with_ipc_buffer_mut(|buffer| {
+    //                     buffer.caps_or_badges_mut()[0] = common_irq_handler.bits() as _;
+    //                 });
+
+    //                 // call
+    //                 let info = MessageInfo::new(0, 0, 1, 0);
+    //                 irq_ep.call(info);
+    //             }
+    //         }
+    //     } else {
+    //         let fault = with_ipc_buffer(|buffer| sel4::Fault::new(buffer, &message));
+    //         debug_println!("[root-task] recv fault {:#x?}", fault)
+    //     }
+    // }
 }

@@ -16,7 +16,7 @@ mod object_allocator;
 mod utils;
 
 use crate_consts::{DEFAULT_CUSTOM_SLOT, DEFAULT_EMPTY_SLOT_INDEX, KERNEL_THREAD_SLOT_NUMS};
-use object_allocator::{alloc_cap, OBJ_ALLOCATOR};
+use object_allocator::OBJ_ALLOCATOR;
 use sel4::{cap_type, debug_println, init_thread, Cap};
 use sel4_sys::seL4_DebugPutChar;
 
@@ -49,7 +49,8 @@ fn main() -> ! {
     //     child::test_child(ep).unwrap()
     // });
     debug_println!("[kernel-thread] Say Goodbye");
-    
+    sel4::cap::Notification::from_bits(1).signal();
+    // sel4::init_thread::slot::TCB.cap().tcb_suspend().unwrap();
     sel4::cap::Tcb::from_bits(2).tcb_suspend().unwrap();
     unreachable!()
 }
