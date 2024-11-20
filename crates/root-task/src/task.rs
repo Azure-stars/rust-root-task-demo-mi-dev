@@ -2,6 +2,8 @@ use crate::ObjectAllocator;
 use crate::GRANULE_SIZE;
 use crate::{obj_allocator::OBJ_ALLOCATOR, page_seat_vaddr};
 use alloc::vec::Vec;
+use crate_consts::CNODE_RADIX_BITS;
+use object::File;
 use sel4::{
     cap::{Endpoint, Null},
     cap_type::CNode,
@@ -11,8 +13,6 @@ use sel4::{
 use sel4::{cap_type, debug_println};
 use task_helper::{Sel4TaskHelper, TaskHelperTrait};
 use xmas_elf::ElfFile;
-
-const CNODE_RADIX_BITS: usize = 12;
 
 pub type Sel4Task = Sel4TaskHelper<TaskImpl>;
 
@@ -91,22 +91,29 @@ pub fn rebuild_cspace() {
 
 pub fn build_kernel_thread(
     fault_ep: (Endpoint, u64),
-    thread_name: &str,
-    elf_file: ElfFile,
     irq_ep: Endpoint,
+    thread_name: &str,
+    file_data: &[u8],
+    free_page_addr: usize,
 ) -> sel4::Result<Sel4Task> {
+    // make 新线程的虚拟地址空间
+    let (vspace, ipc_buffer_addr, ipc_buffer_cap) = make_child_vspace(
+        &File::parse(file_data).unwrap(),
+        sel4::init_thread::slot::VSPACE.cap(),
+        free_page_addr,
+        sel4::init_thread::slot::ASID_POOL.cap(),
+    );
+
     let cnode = OBJ_ALLOCATOR
         .lock()
         .allocate_variable_sized::<cap_type::CNode>(CNODE_RADIX_BITS);
+
     let tcb = OBJ_ALLOCATOR.lock().allocate_fixed_sized::<cap_type::Tcb>();
-    let vspace = OBJ_ALLOCATOR
-        .lock()
-        .allocate_fixed_sized::<cap_type::VSpace>();
 
     let mut task = Sel4Task::new(tcb, cnode, fault_ep.0, vspace, fault_ep.1, irq_ep);
 
-    // Configure Root Task
-    task.configure(CNODE_RADIX_BITS)?;
+    // Configure TCB
+    task.configure(CNODE_RADIX_BITS, ipc_buffer_addr, ipc_buffer_cap)?;
 
     // Map stack for the task.
     task.map_stack(10);
@@ -115,10 +122,9 @@ pub fn build_kernel_thread(
     task.tcb
         .tcb_set_sched_params(init_thread::slot::TCB.cap(), 255, 255)?;
 
-    // Map elf file for the task.
-    task.map_elf(elf_file);
-
     task.tcb.debug_name(thread_name.as_bytes());
+
+    task.with_context(&ElfFile::new(file_data).expect("parse elf error"));
 
     debug_println!("Task: {} created. cnode: {:?}", thread_name, task.cnode);
 
@@ -172,6 +178,7 @@ pub(crate) fn make_child_vspace<'a>(
         free_page_addr,
     );
 
+    // ipc buffer所在地址
     let ipc_buffer_addr = image_footprint.end;
     let ipc_buffer_cap = allocator.allocate_fixed_sized::<sel4::cap_type::Granule>();
     ipc_buffer_cap

@@ -10,7 +10,6 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-alloc-helper = { path = "../alloc-helper" }
 sel4 = { git = "https://github.com/seL4/rust-sel4", rev = "1cd063a" }
 sel4-sys = { git = "https://github.com/seL4/rust-sel4", rev = "1cd063a" }
 sel4-panicking = { git = "https://github.com/seL4/rust-sel4", rev = "1cd063a", features = [
@@ -26,7 +25,6 @@ sel4-runtime-common = { git = "https://github.com/seL4/rust-sel4", rev = "1cd063
     "tls",
     "unwinding",
 ] }
-
 spin = { version = "0.9.8" }
 log = "0.4"
 xmas-elf = "0.9.1"

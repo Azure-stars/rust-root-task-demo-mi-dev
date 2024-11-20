@@ -16,6 +16,8 @@ pub fn abs_cptr<T: HasCPtrWithDepth>(path: T) -> AbsoluteCPtr {
     init_thread::slot::CNODE.cap().relative(path)
 }
 
+pub const GRANULE_SIZE: usize = sel4::FrameObjectType::GRANULE.bytes();
+
 #[repr(C, align(4096))]
 struct FreePagePlaceHolder(#[allow(dead_code)] [u8; GRANULE_SIZE]);
 
@@ -44,5 +46,3 @@ fn get_user_image_frame_slot(
         .user_image_frames()
         .index(addr / GRANULE_SIZE - user_image_addr / GRANULE_SIZE)
 }
-
-pub const GRANULE_SIZE: usize = sel4::FrameObjectType::GRANULE.bytes();

@@ -7,3 +7,4 @@ edition = "2021"
 
 [dependencies]
 sel4 = { git = "https://github.com/seL4/rust-sel4", rev = "1cd063a" }
+crate-consts = { path = "../crate-consts" }

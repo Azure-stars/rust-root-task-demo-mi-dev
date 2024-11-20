@@ -10,7 +10,6 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-alloc-helper = { path = "../alloc-helper" }
 crate-consts = { path = "../crate-consts" }
 task-helper = { path = "../task-helper" }
 kernel-thread = { path = "../kernel-thread" }

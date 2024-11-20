@@ -37,7 +37,7 @@ $(app): $(app).intermediate
 .INTERMDIATE: $(app).intermediate
 $(app).intermediate:
 	SEL4_PREFIX=$(sel4_prefix) \
-	RUSTFLAGS="-Clink-arg=-Tcrates/shim-comp/linker.ld" \
+	RUSTFLAGS="-Clink-arg=-Tcrates/shim/link.ld" \
 		cargo build \
 			-Z build-std=core,alloc,compiler_builtins \
 			-Z build-std-features=compiler-builtins-mem \
@@ -45,7 +45,7 @@ $(app).intermediate:
 			--target-dir $(abspath $(build_dir)/target) \
 			--out-dir $(build_dir) \
 			--release \
-			-p shim-comp
+			-p shim
 	SEL4_PREFIX=$(sel4_prefix) \
 		cargo build \
 			-Z build-std=core,alloc,compiler_builtins \

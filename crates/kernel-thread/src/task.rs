@@ -1,16 +1,13 @@
 use core::cmp;
 
 use alloc::{collections::btree_map::BTreeMap, vec::Vec};
-use sel4::{cap_type, debug_println, BootInfo, CapRights, Error, SmallPage, VMAttributes};
+use crate_consts::{CNODE_RADIX_BITS, PAGE_SIZE};
+use sel4::{debug_println, init_thread, CapRights, Error, VmAttributes};
 use xmas_elf::{program, ElfFile};
 
-use crate::{
-    object_allocator::{alloc_cap, alloc_cap_size},
-    page_seat_vaddr,
-};
+use crate::{object_allocator::OBJ_ALLOCATOR, page_seat_vaddr};
 
 pub const DEFAULT_USER_STACK_SIZE: usize = 0x1_0000_0000;
-const PAGE_SIZE: usize = 0x1000;
 const STACK_ALIGN_SIZE: usize = 16;
 
 #[derive(PartialEq, Eq, PartialOrd, Ord)]
@@ -67,18 +64,18 @@ pub enum AuxV {
 }
 
 pub struct Sel4Task {
-    pub tcb: sel4::TCB,
-    pub cnode: sel4::CNode,
-    pub vspace: sel4::VSpace,
-    pub mapped_pt: Vec<sel4::PT>,
-    pub mapped_page: BTreeMap<usize, sel4::SmallPage>,
+    pub tcb: sel4::cap::Tcb,
+    pub cnode: sel4::cap::CNode,
+    pub vspace: sel4::cap::VSpace,
+    pub mapped_pt: Vec<sel4::cap::PT>,
+    pub mapped_page: BTreeMap<usize, sel4::cap::SmallPage>,
     pub heap: usize,
     pub exit: bool,
 }
 
 impl Drop for Sel4Task {
     fn drop(&mut self) {
-        let root_cnode = BootInfo::init_thread_cnode();
+        let root_cnode = init_thread::slot::CNODE.cap();
         root_cnode.relative(self.tcb).revoke().unwrap();
         root_cnode.relative(self.tcb).delete().unwrap();
         root_cnode.relative(self.cnode).revoke().unwrap();
@@ -99,15 +96,22 @@ impl Drop for Sel4Task {
 
 impl Sel4Task {
     pub fn new() -> Sel4Task {
-        let vspace = alloc_cap::<cap_type::VSpace>();
-
-        BootInfo::init_thread_asid_pool()
+        let vspace = OBJ_ALLOCATOR
+            .lock()
+            .allocate_fixed_sized::<sel4::cap_type::VSpace>();
+        init_thread::slot::ASID_POOL
+            .cap()
             .asid_pool_assign(vspace)
             .unwrap();
-
+        let tcb = OBJ_ALLOCATOR
+            .lock()
+            .allocate_fixed_sized::<sel4::cap_type::Tcb>();
+        let cnode = OBJ_ALLOCATOR
+            .lock()
+            .allocate_variable_sized::<sel4::cap_type::CNode>(CNODE_RADIX_BITS);
         Sel4Task {
-            tcb: alloc_cap::<cap_type::TCB>(),
-            cnode: alloc_cap_size::<cap_type::CNode>(12),
+            tcb,
+            cnode,
             vspace,
             mapped_pt: Vec::new(),
             mapped_page: BTreeMap::new(),
@@ -116,14 +120,14 @@ impl Sel4Task {
         }
     }
 
-    pub fn map_page(&mut self, vaddr: usize, page: sel4::SmallPage) {
+    pub fn map_page(&mut self, vaddr: usize, page: sel4::cap::SmallPage) {
         assert_eq!(vaddr % PAGE_SIZE, 0);
-        for _ in 0..4 {
+        for _ in 0..sel4::vspace_levels::NUM_LEVELS {
             let res: core::result::Result<(), sel4::Error> = page.frame_map(
                 self.vspace,
                 vaddr as _,
                 CapRights::all(),
-                VMAttributes::DEFAULT,
+                VmAttributes::DEFAULT,
             );
             match res {
                 Ok(_) => {
@@ -131,9 +135,11 @@ impl Sel4Task {
                     return;
                 }
                 Err(Error::FailedLookup) => {
-                    let pt_cap = alloc_cap::<cap_type::PT>();
+                    let pt_cap = OBJ_ALLOCATOR
+                        .lock()
+                        .allocate_fixed_sized::<sel4::cap_type::PT>();
                     pt_cap
-                        .pt_map(self.vspace, vaddr, VMAttributes::DEFAULT)
+                        .pt_map(self.vspace, vaddr, VmAttributes::DEFAULT)
                         .unwrap();
                     self.mapped_pt.push(pt_cap);
                 }
@@ -153,14 +159,16 @@ impl Sel4Task {
         let mut stack_ptr = DEFAULT_USER_STACK_SIZE;
 
         for vaddr in (start..end).step_by(PAGE_SIZE) {
-            let page_cap = alloc_cap::<cap_type::Granule>();
+            let page_cap = OBJ_ALLOCATOR
+                .lock()
+                .allocate_fixed_sized::<sel4::cap_type::Granule>();
             if vaddr == DEFAULT_USER_STACK_SIZE - PAGE_SIZE {
                 page_cap
                     .frame_map(
-                        BootInfo::init_thread_vspace(),
+                        init_thread::slot::VSPACE.cap(),
                         page_seat_vaddr(),
                         CapRights::all(),
-                        VMAttributes::DEFAULT,
+                        VmAttributes::DEFAULT,
                     )
                     .unwrap();
 
@@ -228,7 +236,7 @@ impl Sel4Task {
     pub fn map_elf(&mut self, elf_data: &[u8]) {
         let file = ElfFile::new(elf_data).expect("This is not a valid elf file");
 
-        let mut mapped_page: BTreeMap<usize, SmallPage> = BTreeMap::new();
+        let mut mapped_page: BTreeMap<usize, sel4::cap::SmallPage> = BTreeMap::new();
 
         // Load data from elf file.
         file.program_iter()
@@ -245,7 +253,9 @@ impl Sel4Task {
                             page_cap.frame_unmap().unwrap();
                             page_cap
                         }
-                        None => alloc_cap::<cap_type::Granule>(),
+                        None => OBJ_ALLOCATOR
+                            .lock()
+                            .allocate_fixed_sized::<sel4::cap_type::Granule>(),
                     };
 
                     // If need to read data from elf file.
@@ -253,10 +263,10 @@ impl Sel4Task {
                         // Map to root task to write datas.
                         page_cap
                             .frame_map(
-                                BootInfo::init_thread_vspace(),
+                                init_thread::slot::VSPACE.cap(),
                                 page_seat_vaddr(),
                                 CapRights::all(),
-                                VMAttributes::DEFAULT,
+                                VmAttributes::DEFAULT,
                             )
                             .unwrap();
 
@@ -296,8 +306,10 @@ impl Sel4Task {
         if value == 0 {
             return self.heap;
         }
-        for vaddr in (self.heap..value).step_by(0x1000) {
-            let page_cap = alloc_cap::<cap_type::Granule>();
+        for vaddr in (self.heap..value).step_by(PAGE_SIZE) {
+            let page_cap = OBJ_ALLOCATOR
+                .lock()
+                .allocate_fixed_sized::<sel4::cap_type::Granule>();
             self.map_page(vaddr, page_cap);
         }
         value

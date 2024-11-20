@@ -28,7 +28,7 @@ impl ObjectAllocator {
         self.ut = untyped;
     }
 
-    pub(crate) fn allocate(&mut self, blueprint: sel4::ObjectBlueprint) -> sel4::cap::Unspecified {
+    fn allocate(&mut self, blueprint: sel4::ObjectBlueprint) -> sel4::cap::Unspecified {
         let slot_index = self.empty_slots.next().unwrap();
         self.ut
             .untyped_retype(

@@ -28,8 +28,6 @@ static GLOBAL_ALLOCATOR: StaticDlmallocGlobalAlloc<
     &'static StaticHeap<HEAP_SIZE>,
 > = StaticDlmallocGlobalAlloc::new(PanickingRawMutex::new(), &STATIC_HEAP);
 
-// sel4_panicking_env::register_debug_put_char!(sel4::debug_put_char);
-
 #[no_mangle]
 unsafe extern "C" fn sel4_runtime_rust_entry() -> ! {
     unsafe extern "C" fn cont_fn(_cont_arg: *mut sel4_runtime_common::ContArg) -> ! {

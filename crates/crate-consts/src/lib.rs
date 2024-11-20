@@ -22,3 +22,9 @@ pub const INIT_EP: Endpoint = Endpoint::from_bits(DEFAULT_THREAD_FAULT_EP);
 pub const DEFAULT_CNODE_BITS: u64 = 12;
 pub const DEFAULT_CNODE_SLOT_NUMS: usize = 1 << DEFAULT_CNODE_BITS;
 pub const KERNEL_THREAD_SLOT_NUMS: usize = 1 << 10;
+
+// The radix bits of the cnode in the task.
+pub const CNODE_RADIX_BITS: usize = 12;
+
+pub const PAGE_SIZE_BITS: usize = 12;
+pub const PAGE_SIZE: usize = 1 << PAGE_SIZE_BITS;

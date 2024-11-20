@@ -2,12 +2,11 @@
 
 use core::cell::UnsafeCell;
 
+use crate_consts::PAGE_SIZE;
 use sel4::{with_ipc_buffer, with_ipc_buffer_mut, CPtrBits, MessageInfo};
 
 // FIXME: Make this variable more generic.
 pub const VIRTIO_MMIO_ADDR: usize = 0xa003e00;
-
-pub const PAGE_SIZE: usize = sel4::FrameObjectType::GRANULE.bytes();
 
 /// Impl custom message label quickly.
 macro_rules! impl_message_label {
