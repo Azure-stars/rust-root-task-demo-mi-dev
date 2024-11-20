@@ -5,5 +5,12 @@ make -C docker/ rm-container && make -C docker/ run && make -C docker/ exec
 
 ## 运行用户测例
 ```
-make run KERNEL=<rel4/sel4>
+make -C docker/ rm-container && make -C docker/ run && make -C docker/ exec
+```
+
+Finally, inside the container, build and emulate a simple seL4-based system with a root task written
+in Rust:
+
+```
+make run
 ```

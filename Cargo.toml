@@ -9,5 +9,10 @@
 resolver = "2"
 
 members = [
-    "crates/example",
+    "crates/root-task",
+    "crates/crate-consts",
+    "crates/task-helper",
+    "crates/kernel-thread",
+    "crates/common",
+    "crates/shim",
 ]

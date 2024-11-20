@@ -17,12 +17,10 @@ clean:
 
 KERNEL ?= sel4
 
+TARGET := aarch64-sel4
+
 ifeq ($(KERNEL), sel4)
 sel4_prefix := $(SEL4_INSTALL_DIR)
-# Kernel loader binary artifacts provided by Docker container:
-# - `sel4-kernel-loader`: The loader binary, which expects to have a payload appended later via
-#   binary patch.
-# - `sel4-kernel-loader-add-payload`: CLI which appends a payload to the loader.
 loader_artifacts_dir := $(SEL4_INSTALL_DIR)/bin
 else ifeq ($(KERNEL), rel4)
 sel4_prefix := $(REL4_INSTALL_DIR)
@@ -32,7 +30,7 @@ endif
 loader := $(loader_artifacts_dir)/sel4-kernel-loader
 loader_cli := $(loader_artifacts_dir)/sel4-kernel-loader-add-payload
 
-app_crate := example
+app_crate := root-task
 app := $(build_dir)/$(app_crate).elf
 
 $(app): $(app).intermediate
@@ -42,12 +40,28 @@ $(app): $(app).intermediate
 .INTERMDIATE: $(app).intermediate
 $(app).intermediate:
 	SEL4_PREFIX=$(sel4_prefix) \
+	RUSTFLAGS="-Clink-arg=-Tcrates/shim/link.ld" \
 		cargo build \
 			-Z build-std=core,alloc,compiler_builtins \
 			-Z build-std-features=compiler-builtins-mem \
-			--target-dir $(build_dir)/target \
-			--artifact-dir $(build_dir) \
-			-p $(app_crate)
+			--target $(TARGET) \
+			--target-dir $(abspath $(build_dir)/target) \
+			--out-dir $(build_dir) \
+			--release \
+			-p shim
+	SEL4_PREFIX=$(sel4_prefix) \
+		cargo build \
+			-Z build-std=core,alloc,compiler_builtins \
+			-Z build-std-features=compiler-builtins-mem \
+			--target $(TARGET) \
+			--target-dir $(abspath $(build_dir)/target) \
+			--out-dir $(build_dir) \
+			--release \
+			-p kernel-thread
+	cargo build \
+		--target-dir $(build_dir)/target \
+		--artifact-dir $(build_dir) \
+		-p $(app_crate)
 
 image := $(build_dir)/image.elf
 
