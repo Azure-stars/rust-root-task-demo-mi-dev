@@ -35,7 +35,10 @@ RUN curl -sSf https://sh.rustup.rs | \
 
 ENV PATH=/root/.cargo/bin:$PATH
 
+# the directory where seL4 will be installed
 ENV SEL4_INSTALL_DIR=/opt/seL4
+# the directory where reL4 will be installed
+ENV REL4_INSTALL_DIR=/opt/reL4
 
 RUN set -eux; \
     git clone \
@@ -78,6 +81,48 @@ RUN set -eux; \
     cargo install \
         $common_args \
         sel4-kernel-loader-add-payload;
+
+RUN set -eux; \
+    git clone \
+        https://github.com/rel4team/mi-dev-integral-rel4.git rel4_kernel -b microkit \
+        --config advice.detachedHead=false;
+RUN set -eux; \
+    git clone \
+        https://github.com/rel4team/seL4_c_impl.git \
+        --config advice.detachedHead=false -b microkit;
+
+COPY kernel-settings-aarch64.cmake .
+RUN set -eux; \
+    cd rel4_kernel;\
+    git pull; \
+    python3 -m venv pyenv; \
+    export PATH=$(realpath ./pyenv/bin):$PATH; \
+    pip install pyyaml; \
+    pip install pyfdt; \
+    pip install jinja2; \
+    pip install six; \
+    pip install future; \
+    pip install ply; \
+    rustup install nightly-2024-01-31; \
+    rustup default nightly-2024-01-31; \
+    rustup target add aarch64-unknown-none-softfloat; \
+    cargo build --release --target aarch64-unknown-none-softfloat; \
+    cd ../seL4_c_impl; \
+    git pull; \
+    rm -rf build; \
+    cmake \
+        -DCROSS_COMPILER_PREFIX=aarch64-linux-gnu- \
+        -DCMAKE_INSTALL_PREFIX=$REL4_INSTALL_DIR \
+        -C ./kernel-settings-aarch64.cmake \
+        -G Ninja \
+        -S . \
+        -B build; \
+    ninja -C build all; \
+    ninja -C build install;
+
+RUN set -eux; \
+    cp ${SEL4_INSTALL_DIR}/bin/sel4-kernel-loader \
+        ${SEL4_INSTALL_DIR}/bin/sel4-kernel-loader-add-payload ${REL4_INSTALL_DIR}/bin;
 
 ARG UID
 ARG GID
