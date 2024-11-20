@@ -1,9 +1,3 @@
-//
-// Copyright 2024, Colias Group, LLC
-//
-// SPDX-License-Identifier: BSD-2-Clause
-//
-
 use core::ops::Range;
 use sel4::cap::Untyped;
 use spin::Mutex;

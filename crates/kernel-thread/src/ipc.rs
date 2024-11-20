@@ -1,9 +1,8 @@
+use crate::{object_allocator::OBJ_ALLOCATOR, page_seat_vaddr, task::Sel4Task, utils::align_bits};
 use crate_consts::{PAGE_SIZE, PAGE_SIZE_BITS};
-use sel4::{init_thread, Cap, CapRights, VmAttributes};
+use sel4::{cap_type::Granule, init_thread, Cap, CapRights, VmAttributes};
 use sel4_sys::seL4_DebugPutChar;
 use syscalls::{Errno, Sysno};
-
-use crate::{object_allocator::OBJ_ALLOCATOR, page_seat_vaddr, task::Sel4Task, utils::align_bits};
 
 pub fn handle_ipc_call(
     task: &mut Sel4Task,
@@ -11,7 +10,7 @@ pub fn handle_ipc_call(
     args: [usize; 6],
 ) -> Result<usize, Errno> {
     let sys_no = Sysno::new(sys_id).ok_or(Errno::EINVAL)?;
-    log::debug!("received sys_no: {:?}", sys_no);
+    log::debug!("received syscall: {:?}", sys_no);
     let res = match sys_no {
         Sysno::set_tid_address => 1,
         Sysno::getuid => 0,
@@ -28,9 +27,7 @@ pub fn handle_ipc_call(
                 if task.mapped_page.get(&vaddr).is_some() {
                     continue;
                 }
-                let page_cap = OBJ_ALLOCATOR
-                    .lock()
-                    .allocate_fixed_sized::<sel4::cap_type::Granule>();
+                let page_cap = OBJ_ALLOCATOR.lock().allocate_fixed_sized::<Granule>();
                 task.map_page(vaddr, page_cap);
             }
             addr
@@ -38,17 +35,17 @@ pub fn handle_ipc_call(
         Sysno::write => match args[0] {
             1 => {
                 if let Some(cap) = task.mapped_page.get(&align_bits(args[1], PAGE_SIZE_BITS)) {
-                    let new_cap = Cap::<sel4::cap_type::SmallPage>::from_bits(0);
+                    let tmp_cap = Cap::<sel4::cap_type::SmallPage>::from_bits(0);
                     init_thread::slot::CNODE
                         .cap()
-                        .relative(new_cap)
+                        .relative(tmp_cap)
                         .copy(
                             &init_thread::slot::CNODE.cap().relative(*cap),
                             CapRights::all(),
                         )
                         .unwrap();
 
-                    new_cap
+                    tmp_cap
                         .frame_map(
                             init_thread::slot::VSPACE.cap(),
                             page_seat_vaddr(),
@@ -66,11 +63,11 @@ pub fn handle_ipc_call(
                         .iter()
                         .map(u8::clone)
                         .for_each(seL4_DebugPutChar);
-                    new_cap.frame_unmap().unwrap();
+                    tmp_cap.frame_unmap().unwrap();
 
                     init_thread::slot::CNODE
                         .cap()
-                        .relative(new_cap)
+                        .relative(tmp_cap)
                         .delete()
                         .unwrap();
                 }

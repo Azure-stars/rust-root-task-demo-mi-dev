@@ -11,7 +11,7 @@ use task::*;
 use utils::*;
 
 use alloc::vec::Vec;
-use common::{AlignedPage, RootMessageLabel};
+use common::RootMessageLabel;
 use crate_consts::*;
 use include_bytes_aligned::include_bytes_aligned;
 use sel4::{
@@ -20,15 +20,6 @@ use sel4::{
     with_ipc_buffer_mut, CPtr, CapRights, MessageInfo, UntypedDesc,
 };
 use sel4_root_task::{debug_println, root_task, Never};
-
-/// Empty seat for page frame allocation.
-/// FIXME: Support it for multi-threaded task.
-static mut PAGE_FRAME_SEAT: AlignedPage = AlignedPage::new();
-
-/// Get the virtual address of the page seat.
-pub fn page_seat_vaddr() -> usize {
-    unsafe { PAGE_FRAME_SEAT.ptr() as _ }
-}
 
 static TASK_FILES: &[(&str, &[u8])] = &[(
     "kernel-thread",
@@ -102,8 +93,11 @@ fn main(bootinfo: &sel4::BootInfoPtr) -> sel4::Result<Never> {
 
     let mut tasks = Vec::new();
 
+    // Used for fault and normal IPC ( Reuse )
     let fault_ep = OBJ_ALLOCATOR.lock().allocate_fixed_sized::<Endpoint>();
+    // Used for IRQ Registration with slot transfer
     let irq_ep = OBJ_ALLOCATOR.lock().allocate_fixed_sized::<Endpoint>();
+    let common_irq_handler = OBJ_ALLOCATOR.lock().allocate_normal_cap::<IrqHandler>();
 
     for task in TASK_FILES.iter() {
         tasks.push(build_kernel_thread(
@@ -118,17 +112,17 @@ fn main(bootinfo: &sel4::BootInfoPtr) -> sel4::Result<Never> {
     // Transfer a untyped memory to kernel_untyped_memory.
     tasks[0]
         .abs_cptr_with_depth(DEFAULT_CUSTOM_SLOT, CNODE_RADIX_BITS)
-        .copy(&utils::abs_cptr(kernel_untyped), CapRights::all())
+        .copy(
+            &init_thread::slot::CNODE.cap().relative(kernel_untyped),
+            CapRights::all(),
+        )
         .unwrap();
-
-    // used for irq handler registration
-    let common_irq_handler = OBJ_ALLOCATOR.lock().allocate_normal_cap::<IrqHandler>();
 
     // Start tasks
     run_tasks(&tasks);
 
     loop {
-        debug_println!("[RootTask]: Waiting for message");
+        debug_println!("[RootTask]: Waiting for message...");
         let (message, badge) = fault_ep.recv(());
         debug_println!(
             "[RootTask]: Received message: {:?}, badge: {:?}",
@@ -140,7 +134,7 @@ fn main(bootinfo: &sel4::BootInfoPtr) -> sel4::Result<Never> {
                 RootMessageLabel::RegisterIRQ(irq_handler, irq_num) => {
                     let slot = &tasks[badge as usize]
                         .cnode
-                        .relative_bits_with_depth(irq_handler as _, CNODE_RADIX_BITS);
+                        .relative(CPtr::from_bits(irq_handler));
 
                     init_thread::slot::IRQ_CONTROL
                         .cap()
@@ -172,7 +166,7 @@ fn main(bootinfo: &sel4::BootInfoPtr) -> sel4::Result<Never> {
                     // call
                     let info = MessageInfo::new(0, 0, 1, 0);
                     irq_ep.call(info);
-                    debug_println!("[RootTask] Send IRQ to Kernel Thread");
+                    debug_println!("[RootTask] Sent IRQ to Kernel Thread");
                 }
                 _ => {
                     debug_println!("[RootTask] Received IRQ");

@@ -1,7 +1,6 @@
 #![no_std]
 
 use core::cell::UnsafeCell;
-
 use crate_consts::PAGE_SIZE;
 use sel4::{with_ipc_buffer, with_ipc_buffer_mut, CPtrBits, MessageInfo};
 

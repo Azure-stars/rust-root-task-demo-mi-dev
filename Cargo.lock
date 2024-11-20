@@ -954,7 +954,6 @@ name = "task-helper"
 version = "0.1.0"
 dependencies = [
  "crate-consts",
- "object",
  "sel4 0.1.0 (git+https://github.com/seL4/rust-sel4?rev=1cd063a)",
  "sel4-sync",
  "spin",

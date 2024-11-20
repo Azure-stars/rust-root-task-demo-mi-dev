@@ -3,6 +3,7 @@
 #![feature(naked_functions)]
 
 extern crate sel4_panicking;
+
 use common::CustomMessageLabel;
 use core::{
     arch::asm,
@@ -54,7 +55,7 @@ fn main(ep: Endpoint, busybox_entry: usize, vsyscall_section: usize) -> usize {
         0,
     ));
 
-    debug_println!("[User] send ipc buffer done");
+    debug_println!("[User] send ipc buffer to kernel thread ok");
 
     // Return the true entry point
     return busybox_entry;
@@ -138,10 +139,13 @@ fn set_ipc_buffer_with_symbol() {
     extern "C" {
         static _end: usize;
     }
-    let ipc_buffer = (ptr::addr_of!(_end) as usize)
-        .next_multiple_of(sel4::cap_type::Granule::FRAME_OBJECT_TYPE.bytes())
-        as *mut sel4::IpcBuffer;
-    let ipc_buffer = unsafe { ipc_buffer.as_mut().unwrap() };
+    let ipc_buffer = unsafe {
+        ((ptr::addr_of!(_end) as usize)
+            .next_multiple_of(sel4::cap_type::Granule::FRAME_OBJECT_TYPE.bytes())
+            as *mut sel4::IpcBuffer)
+            .as_mut()
+            .unwrap()
+    };
 
     set_ipc_buffer(ipc_buffer);
 }

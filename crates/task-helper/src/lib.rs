@@ -1,21 +1,21 @@
 #![no_std]
 #![feature(associated_type_defaults)]
 
+extern crate alloc;
+
 use alloc::{collections::btree_map::BTreeMap, sync::Arc, vec::Vec};
-use core::{cmp, marker::PhantomData};
+use core::marker::PhantomData;
 use crate_consts::{
     CNODE_RADIX_BITS, DEFAULT_THREAD_FAULT_EP, DEFAULT_THREAD_IRQ_EP, DEFAULT_THREAD_NOTIFICATION,
+    PAGE_SIZE, STACK_ALIGN_SIZE,
 };
-use object::{File, Object, ObjectSegment};
 use sel4::{
-    cap::{Granule, Notification, Null},
+    cap::{Granule, Notification},
     init_thread, AbsoluteCPtr, CNodeCapData, CPtr, CPtrBits, CapRights, Error, HasCPtrWithDepth,
     VmAttributes as VMAttributes,
 };
 use sel4_sync::{lock_api::Mutex, MutexSyncOpsWithNotification};
 use xmas_elf::{program, ElfFile};
-
-extern crate alloc;
 
 /// Thread Notifications implementation
 pub struct ThreadNotification;
@@ -32,32 +32,15 @@ impl MutexSyncOpsWithNotification for ThreadNotification {
 // pub type NotiMutex<T> = Mutex<GenericRawMutex<ThreadNotification>, T>;
 pub type NotiMutex<T> = Mutex<spin::Mutex<()>, T>;
 
-/// The size of the page [sel4::GRANULE_SIZE].
-const PAGE_SIZE: usize = sel4::FrameObjectType::GRANULE.bytes();
-
-/// Stack aligned with [STACK_ALIGN_SIZE] bytes
-const STACK_ALIGN_SIZE: usize = 16;
-
 /// The Trait the help task implement quickly.
 pub trait TaskHelperTrait<V> {
     type Task = V;
-    /// The address of IPC buffer.
-    const IPC_BUFFER_ADDR: usize;
     /// The default stack top address.
     const DEFAULT_STACK_TOP: usize;
-    /// Get the address of the empty seat page.
-    fn page_seat_vaddr() -> usize;
     /// Allocate a new page table.
     fn allocate_pt(task: &mut V) -> sel4::cap::PT;
     /// Allocate a new Page.
     fn allocate_page(task: &mut V) -> sel4::cap::Granule;
-}
-
-/// The macro help to align addr with [PAGE_SIZE].
-macro_rules! align_page {
-    ($addr:expr) => {
-        ($addr / PAGE_SIZE * PAGE_SIZE)
-    };
 }
 
 /// Help to create a new task quickly.
@@ -92,18 +75,18 @@ impl<H: TaskHelperTrait<Self>> Sel4TaskHelper<H> {
 
         // Move Fault EP to child process
         task.abs_cptr_with_depth(DEFAULT_THREAD_FAULT_EP, CNODE_RADIX_BITS)
-            .mint(&init_abs_cptr(fault_ep), CapRights::all(), badge)
+            .mint(&cnode_relative(fault_ep), CapRights::all(), badge)
             .unwrap();
 
         // Move IRQ EP to child process
         task.abs_cptr_with_depth(DEFAULT_THREAD_IRQ_EP, CNODE_RADIX_BITS)
-            .mint(&init_abs_cptr(irq_ep), CapRights::all(), badge)
+            .mint(&cnode_relative(irq_ep), CapRights::all(), badge)
             .unwrap();
 
         // Copy ASIDPool to the task, children can assign another children.
         task.abs_cptr_with_depth(init_thread::slot::ASID_POOL.cptr_bits(), CNODE_RADIX_BITS)
             .copy(
-                &init_abs_cptr(init_thread::slot::ASID_POOL.cap()),
+                &cnode_relative(init_thread::slot::ASID_POOL.cap()),
                 CapRights::all(),
             )
             .unwrap();
@@ -114,17 +97,18 @@ impl<H: TaskHelperTrait<Self>> Sel4TaskHelper<H> {
             CNODE_RADIX_BITS,
         )
         .copy(
-            &init_abs_cptr(init_thread::slot::ASID_CONTROL.cap()),
+            &cnode_relative(init_thread::slot::ASID_CONTROL.cap()),
             CapRights::all(),
         )
         .unwrap();
 
         task
     }
+
     /// Map a [sel4::Granule] to vaddr.
     pub fn map_page(&mut self, vaddr: usize, page: sel4::cap::Granule) {
         assert_eq!(vaddr % PAGE_SIZE, 0);
-        for _ in 0..4 {
+        for _ in 0..sel4::vspace_levels::NUM_LEVELS {
             let res: core::result::Result<(), sel4::Error> = page.frame_map(
                 self.vspace,
                 vaddr as _,
@@ -150,127 +134,32 @@ impl<H: TaskHelperTrait<Self>> Sel4TaskHelper<H> {
         }
     }
 
-    /// Map a elf file to the current [sel4::VSpace].
-    pub fn map_elf(&mut self, file: ElfFile) {
-        // Load data from elf file.
-        file.program_iter()
-            .filter(|ph| ph.get_type() == Ok(program::Type::Load))
-            .for_each(|ph| {
-                let mut offset = ph.offset() as usize;
-                let mut vaddr = ph.virtual_addr() as usize;
-                let end = offset + ph.file_size() as usize;
-                let vaddr_end = vaddr + ph.mem_size() as usize;
-
-                while vaddr < vaddr_end {
-                    // Create or get the capability for the current address.
-                    let page_cap = match self.mapped_page.remove(&align_page!(vaddr)) {
-                        Some(page_cap) => {
-                            page_cap.frame_unmap().unwrap();
-                            page_cap
-                        }
-                        None => H::allocate_page(self),
-                    };
-                    // If need to read data from elf file.
-                    if offset < end {
-                        // Map to root task to write datas.
-                        page_cap
-                            .frame_map(
-                                init_thread::slot::VSPACE.cap(),
-                                H::page_seat_vaddr(),
-                                CapRights::all(),
-                                VMAttributes::DEFAULT,
-                            )
-                            .unwrap();
-
-                        let rsize = cmp::min(PAGE_SIZE - vaddr % PAGE_SIZE, end - offset);
-                        // Copy data from elf file's data to the correct position.
-                        unsafe {
-                            core::ptr::copy_nonoverlapping(
-                                file.input.as_ptr().add(offset),
-                                (H::page_seat_vaddr() + offset % PAGE_SIZE) as *mut u8,
-                                rsize,
-                            )
-                        }
-                        // Unmap frame for make seat empty.
-                        page_cap.frame_unmap().unwrap();
-
-                        offset += rsize;
-                    }
-
-                    // Map the page to current task's virtual address space.
-                    self.map_page(align_page!(vaddr), page_cap);
-
-                    // Calculate offset
-                    vaddr += PAGE_SIZE - vaddr % PAGE_SIZE;
-                }
-            });
-
-        // Set current task's context.
-        let mut user_context = sel4::UserContext::default();
-        // Set entry point address.
-        *user_context.pc_mut() = file.header.pt2.entry_point();
-        // Set stack top address.
-        *user_context.sp_mut() = (H::DEFAULT_STACK_TOP - STACK_ALIGN_SIZE) as _;
-        *user_context.gpr_mut(0) = H::IPC_BUFFER_ADDR as _;
-        // Set TLS base address.
-        user_context.inner_mut().tpidr_el0 = file
-            .program_iter()
-            .find(|x| x.get_type() == Ok(program::Type::Tls))
-            .map(|x| x.virtual_addr())
-            .unwrap_or(0);
-        // Write register to the task.
-        self.tcb
-            .tcb_write_all_registers(false, &mut user_context)
-            .expect("can't write pc reg to tcb");
-    }
-
-    /// Initialize the IPC buffer and return the address and the capability of the buffer.
-    pub fn init_ipc_buffer(&mut self) -> (usize, Granule) {
-        let addr = H::IPC_BUFFER_ADDR;
-        assert_eq!(
-            addr % PAGE_SIZE,
-            0,
-            "ipc buffer address should aligned with {PAGE_SIZE:#x}"
-        );
-
-        let cap = match self.mapped_page.get(&addr) {
-            Some(cap) => cap.clone(),
-            None => {
-                let page = H::allocate_page(self);
-                self.map_page(addr, page);
-                self.mapped_page.insert(addr, page);
-                page
-            }
-        };
-        (addr, cap)
-    }
-
-    /// Configure the [sel4::TCB] in the task
+    /// Configure task with setting CNode, Tcb and VSpace Cap
     pub fn configure(
         &mut self,
         radix_bits: usize,
         ipc_buffer_addr: usize,
         ipc_buffer_cap: Granule,
     ) -> Result<(), Error> {
-        // Move cap rights to child process
+        // Move cap rights to task
         self.abs_cptr_with_depth(init_thread::slot::CNODE.cptr_bits(), CNODE_RADIX_BITS)
             .mint(
-                &init_abs_cptr(self.cnode),
+                &cnode_relative(self.cnode),
                 CapRights::all(),
                 CNodeCapData::skip_high_bits(radix_bits).into_word(),
             )
             .unwrap();
 
-        // Copy tcb to task's Cap Space.
+        // Copy tcb to task
         self.abs_cptr_with_depth(init_thread::slot::TCB.cptr_bits(), CNODE_RADIX_BITS)
-            .copy(&init_abs_cptr(self.tcb), CapRights::all())
+            .copy(&cnode_relative(self.tcb), CapRights::all())
             .unwrap();
 
+        // Copy vspace to task
         self.abs_cptr_with_depth(init_thread::slot::VSPACE.cptr_bits(), CNODE_RADIX_BITS)
-            .copy(&init_abs_cptr(self.vspace), CapRights::all())
+            .copy(&cnode_relative(self.vspace), CapRights::all())
             .unwrap();
 
-        // Configure the tcb structure
         self.tcb.tcb_configure(
             CPtr::from_bits(DEFAULT_THREAD_FAULT_EP),
             self.cnode,
@@ -331,6 +220,6 @@ impl<H: TaskHelperTrait<Self>> Sel4TaskHelper<H> {
 }
 
 /// Get the the absolute cptr related to current cnode through cptr_bits.
-pub fn init_abs_cptr<T: HasCPtrWithDepth>(path: T) -> AbsoluteCPtr {
+pub fn cnode_relative<T: HasCPtrWithDepth>(path: T) -> AbsoluteCPtr {
     init_thread::slot::CNODE.cap().relative(path)
 }

@@ -1,38 +1,33 @@
-use crate::ObjectAllocator;
-use crate::GRANULE_SIZE;
-use crate::{obj_allocator::OBJ_ALLOCATOR, page_seat_vaddr};
+use crate::{obj_allocator::OBJ_ALLOCATOR, ObjectAllocator, GRANULE_SIZE};
 use alloc::vec::Vec;
+use core::ops::{DerefMut, Range};
 use crate_consts::CNODE_RADIX_BITS;
-use object::File;
+use object::{
+    elf::{PF_R, PF_W, PF_X},
+    File, Object, ObjectSegment, SegmentFlags,
+};
 use sel4::{
     cap::{Endpoint, Null},
-    cap_type::CNode,
+    cap_type::{CNode, SmallPage, Tcb, PT},
+    debug_println,
     init_thread::{self},
     CNodeCapData, CapRights,
 };
-use sel4::{cap_type, debug_println};
 use task_helper::{Sel4TaskHelper, TaskHelperTrait};
 use xmas_elf::ElfFile;
 
+pub struct TaskImpl;
 pub type Sel4Task = Sel4TaskHelper<TaskImpl>;
 
-pub struct TaskImpl;
-
 impl TaskHelperTrait<Sel4TaskHelper<Self>> for TaskImpl {
-    const IPC_BUFFER_ADDR: usize = 0x1_0000_1000;
     const DEFAULT_STACK_TOP: usize = 0x1_0000_0000;
-    fn page_seat_vaddr() -> usize {
-        page_seat_vaddr()
-    }
 
     fn allocate_pt(_task: &mut Self::Task) -> sel4::cap::PT {
-        OBJ_ALLOCATOR.lock().allocate_fixed_sized::<cap_type::PT>()
+        OBJ_ALLOCATOR.lock().allocate_fixed_sized::<PT>()
     }
 
     fn allocate_page(_task: &mut Self::Task) -> sel4::cap::SmallPage {
-        OBJ_ALLOCATOR
-            .lock()
-            .allocate_fixed_sized::<cap_type::SmallPage>()
+        OBJ_ALLOCATOR.lock().allocate_fixed_sized::<SmallPage>()
     }
 }
 
@@ -106,9 +101,9 @@ pub fn build_kernel_thread(
 
     let cnode = OBJ_ALLOCATOR
         .lock()
-        .allocate_variable_sized::<cap_type::CNode>(CNODE_RADIX_BITS);
+        .allocate_variable_sized::<CNode>(CNODE_RADIX_BITS);
 
-    let tcb = OBJ_ALLOCATOR.lock().allocate_fixed_sized::<cap_type::Tcb>();
+    let tcb = OBJ_ALLOCATOR.lock().allocate_fixed_sized::<Tcb>();
 
     let mut task = Sel4Task::new(tcb, cnode, fault_ep.0, vspace, fault_ep.1, irq_ep);
 
@@ -135,19 +130,16 @@ pub fn run_tasks(tasks: &Vec<Sel4Task>) {
     tasks.iter().for_each(Sel4Task::run)
 }
 
-use core::ops::{DerefMut, Range};
-
-use object::{
-    elf::{PF_R, PF_W, PF_X},
-    Object, ObjectSegment, SegmentFlags,
-};
-
 /// 创建一个新的虚拟地址空间
 /// # Parameters
 /// - `image`: ELF 文件
 /// - `caller_vspace`: root-task 的虚拟地址空间
 /// - `free_page_addr`: 空闲页的地址
 /// - `asid_pool`: ASID 池
+/// # Returns
+/// - `sel4::cap::VSpace`: 新的虚拟地址空间
+/// - `usize`: IPC buffer 的地址
+/// - `sel4::cap::Granule`: IPC buffer 的 cap
 pub(crate) fn make_child_vspace<'a>(
     image: &'a impl Object<'a>,
     caller_vspace: sel4::cap::VSpace,
@@ -178,7 +170,7 @@ pub(crate) fn make_child_vspace<'a>(
         free_page_addr,
     );
 
-    // ipc buffer所在地址
+    // make ipc buffer
     let ipc_buffer_addr = image_footprint.end;
     let ipc_buffer_cap = allocator.allocate_fixed_sized::<sel4::cap_type::Granule>();
     ipc_buffer_cap
@@ -193,7 +185,7 @@ pub(crate) fn make_child_vspace<'a>(
     (child_vspace, ipc_buffer_addr, ipc_buffer_cap)
 }
 
-// 计算 image 的虚地址空间范围
+// 计算 elf image 的虚地址空间范围
 fn footprint<'a>(image: &'a impl Object<'a>) -> Range<usize> {
     let min: usize = image
         .segments()

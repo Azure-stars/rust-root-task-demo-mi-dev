@@ -35,6 +35,5 @@ struct FreePagePlaceHolder(#[allow(dead_code)] [u8; GRANULE_SIZE]);
 static mut FREE_PAGE_PLACEHOLDER: FreePagePlaceHolder = FreePagePlaceHolder([0; GRANULE_SIZE]);
 
 pub unsafe fn init_free_page_addr() -> usize {
-    let addr = core::ptr::addr_of!(FREE_PAGE_PLACEHOLDER) as usize;
-    addr
+    core::ptr::addr_of!(FREE_PAGE_PLACEHOLDER) as _
 }

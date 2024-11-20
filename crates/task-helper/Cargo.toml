@@ -11,4 +11,3 @@ sel4-sync = { git = "https://github.com/seL4/rust-sel4", rev = "1cd063a" }
 xmas-elf = "0.9.1"
 crate-consts = { path = "../crate-consts" }
 spin = { version = "0.9.8" }
-object = { version = "0.36.1", default-features = false, features = ["read"] }

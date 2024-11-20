@@ -1,25 +1,15 @@
-//
-// Copyright 2024, Colias Group, LLC
-//
-// SPDX-License-Identifier: BSD-2-Clause
-//
-
+use crate::main;
 use core::ptr;
-
 use sel4::CapTypeForFrameObjectOfFixedSize;
 use sel4_dlmalloc::{StaticDlmallocGlobalAlloc, StaticHeap};
 use sel4_panicking::catch_unwind;
 use sel4_panicking_env::abort;
 use sel4_sync::PanickingRawMutex;
 
-use crate::main;
-
 const STACK_SIZE: usize = 1024 * 64;
-
 sel4_runtime_common::declare_stack!(STACK_SIZE);
 
 const HEAP_SIZE: usize = 1024 * 64;
-
 static STATIC_HEAP: StaticHeap<HEAP_SIZE> = StaticHeap::new();
 
 #[global_allocator]

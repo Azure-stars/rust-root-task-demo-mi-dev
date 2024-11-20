@@ -1,3 +1,4 @@
+use crate::object_allocator::OBJ_ALLOCATOR;
 use common::RootMessageLabel;
 use crate_consts::{DEFAULT_THREAD_FAULT_EP, DEFAULT_THREAD_IRQ_EP, DEFAULT_THREAD_RECV_SLOT};
 use sel4::{
@@ -6,8 +7,6 @@ use sel4::{
     with_ipc_buffer_mut, MessageInfo,
 };
 use sel4_panicking_env::debug_println;
-
-use crate::object_allocator::OBJ_ALLOCATOR;
 
 const SERIAL_DEVICE_IRQ: usize = 33;
 

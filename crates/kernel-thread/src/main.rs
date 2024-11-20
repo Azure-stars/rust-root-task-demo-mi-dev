@@ -37,9 +37,12 @@ fn main() -> ! {
     );
     debug_println!("[KernelThread] Object Allocator initialized");
     // test_func!("Test IRQ", irq_test::test_irq());
-    test_func!("Test IRQ", irq_test::test_irq_with_cap_transfer());
+    test_func!(
+        "[KernelThread] Test IRQ",
+        irq_test::test_irq_with_cap_transfer()
+    );
 
-    test_func!("Test Thread", {
+    test_func!("[KernelThread] Test Thread", {
         let ep = OBJ_ALLOCATOR.lock().allocate_fixed_sized::<Endpoint>();
         child_test::test_child(ep).unwrap()
     });
