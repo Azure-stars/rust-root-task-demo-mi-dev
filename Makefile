@@ -59,6 +59,8 @@ $(app).intermediate:
 			--release \
 			-p kernel-thread
 	cargo build \
+		-Z build-std=core,alloc,compiler_builtins \
+		-Z build-std-features=compiler-builtins-mem \
 		--target-dir $(build_dir)/target \
 		--artifact-dir $(build_dir) \
 		-p $(app_crate)
