@@ -1,4 +1,4 @@
-use crate::{object_allocator::OBJ_ALLOCATOR, page_seat_vaddr};
+use crate::{page_seat_vaddr, OBJ_ALLOCATOR};
 use alloc::{collections::btree_map::BTreeMap, vec::Vec};
 use core::cmp;
 use crate_consts::{CNODE_RADIX_BITS, PAGE_SIZE, STACK_ALIGN_SIZE};
@@ -275,7 +275,7 @@ impl Sel4Task {
                         unsafe {
                             if vaddr < 0x1fc40 && vaddr + PAGE_SIZE > 0x1fc40 {
                                 let v = ((page_seat_vaddr() + 0xc40) as *mut u32).read_volatile();
-                                debug_println!("v: {:#x}", v);
+                                debug_println!("[KernelThread] v: {:#x}", v);
                             }
                         }
 

@@ -41,7 +41,7 @@ fn inner_entry() -> ! {
     match catch_unwind(main) {
         #[allow(unreachable_patterns)]
         Ok(never) => never,
-        Err(_) => abort!("main() panicked"),
+        Err(_) => abort!("[KernelThread] main() panicked"),
     }
 }
 

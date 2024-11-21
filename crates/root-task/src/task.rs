@@ -1,4 +1,4 @@
-use crate::{obj_allocator::OBJ_ALLOCATOR, ObjectAllocator, GRANULE_SIZE};
+use crate::{ObjectAllocator, GRANULE_SIZE, OBJ_ALLOCATOR};
 use alloc::vec::Vec;
 use core::ops::{DerefMut, Range};
 use crate_consts::CNODE_RADIX_BITS;
@@ -121,7 +121,11 @@ pub fn build_kernel_thread(
 
     task.with_context(&ElfFile::new(file_data).expect("parse elf error"));
 
-    debug_println!("Task: {} created. cnode: {:?}", thread_name, task.cnode);
+    debug_println!(
+        "[RootTask] Task: {} created. cnode: {:?}",
+        thread_name,
+        task.cnode
+    );
 
     Ok(task)
 }

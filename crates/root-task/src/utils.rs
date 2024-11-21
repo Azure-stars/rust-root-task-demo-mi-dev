@@ -1,10 +1,9 @@
-pub const GRANULE_SIZE: usize = sel4::FrameObjectType::GRANULE.bytes();
+use crate_consts::GRANULE_SIZE;
+
+use crate::FREE_PAGE_PLACEHOLDER;
 
 #[repr(C, align(4096))]
-struct FreePagePlaceHolder(#[allow(dead_code)] [u8; GRANULE_SIZE]);
-
-/// 空闲页
-static mut FREE_PAGE_PLACEHOLDER: FreePagePlaceHolder = FreePagePlaceHolder([0; GRANULE_SIZE]);
+pub struct FreePagePlaceHolder(#[allow(dead_code)] pub [u8; GRANULE_SIZE]);
 
 /// unmap 空闲页，返回该页起始地址
 pub unsafe fn init_free_page_addr(bootinfo: &sel4::BootInfo) -> usize {

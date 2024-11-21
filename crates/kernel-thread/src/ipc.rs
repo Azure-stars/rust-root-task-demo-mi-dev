@@ -1,4 +1,4 @@
-use crate::{object_allocator::OBJ_ALLOCATOR, page_seat_vaddr, task::Sel4Task, utils::align_bits};
+use crate::{page_seat_vaddr, task::Sel4Task, utils::align_bits, OBJ_ALLOCATOR};
 use crate_consts::{PAGE_SIZE, PAGE_SIZE_BITS};
 use sel4::{cap_type::Granule, init_thread, Cap, CapRights, VmAttributes};
 use sel4_sys::seL4_DebugPutChar;
@@ -10,7 +10,7 @@ pub fn handle_ipc_call(
     args: [usize; 6],
 ) -> Result<usize, Errno> {
     let sys_no = Sysno::new(sys_id).ok_or(Errno::EINVAL)?;
-    log::debug!("received syscall: {:?}", sys_no);
+    log::debug!("[KernelThread] received syscall: {:?}", sys_no);
     let res = match sys_no {
         Sysno::set_tid_address => 1,
         Sysno::getuid => 0,
@@ -73,7 +73,7 @@ pub fn handle_ipc_call(
                 }
                 args[2]
             }
-            _ => unimplemented!("Write to {} is unimplemented", args[0]),
+            _ => unimplemented!("[KernelThread] Write to {} is unimplemented", args[0]),
         },
         Sysno::munmap => 0,
         Sysno::exit_group => {
@@ -82,7 +82,7 @@ pub fn handle_ipc_call(
         }
         Sysno::mprotect => Err(Errno::EPERM)?,
         _ => {
-            panic!("sysno: {:?}", sys_no)
+            panic!("[KernelThread] sysno: {:?}", sys_no)
         }
     };
     Ok(res)

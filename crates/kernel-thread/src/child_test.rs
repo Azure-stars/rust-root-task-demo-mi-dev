@@ -1,8 +1,8 @@
 use crate::{
     ipc::handle_ipc_call,
-    object_allocator::OBJ_ALLOCATOR,
     task::{Sel4Task, DEFAULT_USER_STACK_SIZE},
     utils::align_bits,
+    OBJ_ALLOCATOR,
 };
 use common::CustomMessageLabel;
 use core::cmp;
@@ -43,8 +43,8 @@ pub fn test_child(ep: Endpoint) -> Result<()> {
     debug_println!("[KernelThread] Child Task Mapping ELF...");
     task.load_elf(CHILD_ELF);
     task.load_elf(BUSYBOX_ELF);
-    let child_elf_file = ElfFile::new(CHILD_ELF).expect("can't load elf file");
-    let busybox_file = ElfFile::new(BUSYBOX_ELF).expect("can't load busybox file");
+    let child_elf_file = ElfFile::new(CHILD_ELF).expect("[KernelThread] can't load elf file");
+    let busybox_file = ElfFile::new(BUSYBOX_ELF).expect("[KernelThread] can't load busybox file");
 
     let busybox_entry_point = busybox_file.header.pt2.entry_point();
     let sp_ptr = task.map_stack(

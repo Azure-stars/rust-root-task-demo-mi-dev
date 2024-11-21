@@ -3,15 +3,13 @@
 
 extern crate alloc;
 
-mod obj_allocator;
 mod task;
 mod utils;
-use obj_allocator::{ObjectAllocator, OBJ_ALLOCATOR};
 use task::*;
 use utils::*;
 
 use alloc::vec::Vec;
-use common::RootMessageLabel;
+use common::*;
 use crate_consts::*;
 use include_bytes_aligned::include_bytes_aligned;
 use sel4::{
@@ -20,11 +18,19 @@ use sel4::{
     with_ipc_buffer_mut, CPtr, CapRights, MessageInfo, UntypedDesc,
 };
 use sel4_root_task::{debug_println, root_task, Never};
+use spin::Mutex;
 
 static TASK_FILES: &[(&str, &[u8])] = &[(
     "kernel-thread",
     include_bytes_aligned!(16, "../../../build/kernel-thread.elf"),
 )];
+
+/// The object allocator for the root task.
+pub(crate) static OBJ_ALLOCATOR: Mutex<ObjectAllocator> = Mutex::new(ObjectAllocator::empty());
+
+/// free page placeholder
+pub(crate) static mut FREE_PAGE_PLACEHOLDER: FreePagePlaceHolder =
+    FreePagePlaceHolder([0; GRANULE_SIZE]);
 
 #[root_task(heap_size = PAGE_SIZE * 32)]
 fn main(bootinfo: &sel4::BootInfoPtr) -> sel4::Result<Never> {
@@ -40,16 +46,19 @@ fn main(bootinfo: &sel4::BootInfoPtr) -> sel4::Result<Never> {
 
     // debug info
     {
-        debug_println!("mem_untyped_start: {:?}", mem_untyped_start);
-        debug_println!("untyped list len: {:?}", bootinfo.untyped_list().len());
-        debug_println!("untyped len: {:?}", bootinfo.untyped().len());
+        debug_println!("[RootTask] mem_untyped_start: {:?}", mem_untyped_start);
         debug_println!(
-            "untyped range: {:?}->{:?}",
+            "[RootTask] untyped list len: {:?}",
+            bootinfo.untyped_list().len()
+        );
+        debug_println!("[RootTask] untyped len: {:?}", bootinfo.untyped().len());
+        debug_println!(
+            "[RootTask] untyped range: {:?}->{:?}",
             bootinfo.untyped().start(),
             bootinfo.untyped().end()
         );
 
-        debug_println!("Untyped List: ");
+        debug_println!("[RootTask] Untyped List: ");
         mem_untypes.iter().rev().for_each(|(index, untyped)| {
             debug_println!(
                 "    Untyped({:03}) paddr: {:#x?} size: {:#x}",
@@ -65,7 +74,7 @@ fn main(bootinfo: &sel4::BootInfoPtr) -> sel4::Result<Never> {
         (mem_untyped_start
             + mem_untypes
                 .pop()
-                .expect("No untyped memory for kernel thread")
+                .expect("[RootTask] No untyped memory for kernel thread")
                 .0)
             .try_into()
             .unwrap(),
@@ -77,7 +86,7 @@ fn main(bootinfo: &sel4::BootInfoPtr) -> sel4::Result<Never> {
         (mem_untyped_start
             + mem_untypes
                 .pop()
-                .expect("No untyped memory for root task")
+                .expect("[RootTask] No untyped memory for root task")
                 .0)
             .try_into()
             .unwrap(),

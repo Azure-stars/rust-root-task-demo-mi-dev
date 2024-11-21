@@ -163,6 +163,6 @@ pub fn syscall0(id: isize) {
 #[allow(non_snake_case)]
 #[no_mangle]
 pub extern "C" fn _Unwind_Resume() -> ! {
-    debug_println!("Task Error");
+    debug_println!("[User] Task Error");
     loop {}
 }

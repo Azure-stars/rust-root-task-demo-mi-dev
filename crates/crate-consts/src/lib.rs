@@ -31,3 +31,9 @@ pub const PAGE_SIZE: usize = 1 << PAGE_SIZE_BITS;
 
 /// Stack aligned with [STACK_ALIGN_SIZE] bytes
 pub const STACK_ALIGN_SIZE: usize = 16;
+
+/// The size of the granule.
+pub const GRANULE_SIZE: usize = sel4::FrameObjectType::GRANULE.bytes();
+
+/// The irq number of the serial device.
+pub const SERIAL_DEVICE_IRQ: usize = 33;

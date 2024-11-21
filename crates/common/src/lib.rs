@@ -1,7 +1,10 @@
 #![no_std]
 
+mod obj_allocator;
+
 use core::cell::UnsafeCell;
 use crate_consts::PAGE_SIZE;
+pub use obj_allocator::*;
 use sel4::{with_ipc_buffer, with_ipc_buffer_mut, CPtrBits, MessageInfo};
 
 // FIXME: Make this variable more generic.

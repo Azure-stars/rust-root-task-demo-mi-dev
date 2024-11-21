@@ -1,14 +1,14 @@
-use crate::object_allocator::OBJ_ALLOCATOR;
+use crate::OBJ_ALLOCATOR;
 use common::RootMessageLabel;
-use crate_consts::{DEFAULT_THREAD_FAULT_EP, DEFAULT_THREAD_IRQ_EP, DEFAULT_THREAD_RECV_SLOT};
+use crate_consts::{
+    DEFAULT_THREAD_FAULT_EP, DEFAULT_THREAD_IRQ_EP, DEFAULT_THREAD_RECV_SLOT, SERIAL_DEVICE_IRQ,
+};
 use sel4::{
     cap_type::{IrqHandler, Notification},
     init_thread::{self},
     with_ipc_buffer_mut, MessageInfo,
 };
 use sel4_panicking_env::debug_println;
-
-const SERIAL_DEVICE_IRQ: usize = 33;
 
 pub fn test_irq() {
     let irq_handler = OBJ_ALLOCATOR.lock().allocate_normal_cap::<IrqHandler>();
