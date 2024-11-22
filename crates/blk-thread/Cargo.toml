@@ -1,0 +1,27 @@
+[package]
+name = "blk-thread"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+sel4 = { git = "https://github.com/seL4/rust-sel4", rev = "1cd063a" }
+sel4-sys = { git = "https://github.com/seL4/rust-sel4", rev = "1cd063a" }
+sel4-panicking = { git = "https://github.com/seL4/rust-sel4", rev = "1cd063a", features = [
+    "unwinding",
+    "alloc",
+] }
+sel4-panicking-env = { git = "https://github.com/seL4/rust-sel4", rev = "1cd063a" }
+sel4-logging = { git = "https://github.com/seL4/rust-sel4", rev = "1cd063a" }
+sel4-dlmalloc = { git = "https://github.com/seL4/rust-sel4", rev = "1cd063a" }
+sel4-sync = { git = "https://github.com/seL4/rust-sel4", rev = "1cd063a" }
+sel4-runtime-common = { git = "https://github.com/seL4/rust-sel4", rev = "1cd063a", features = [
+    "start",
+    "tls",
+    "unwinding",
+] }
+spin = { version = "0.9.8" }
+log = "0.4"
+common = { path = "../common" }
+crate-consts = { path = "../crate-consts" }
+buddy_system_allocator = "0.10.0"
+virtio-drivers = { git = "https://github.com/rcore-os/virtio-drivers", rev = "61ece50" }

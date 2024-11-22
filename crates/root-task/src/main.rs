@@ -13,17 +13,25 @@ use common::*;
 use crate_consts::*;
 use include_bytes_aligned::include_bytes_aligned;
 use sel4::{
-    cap_type::{Endpoint, IrqHandler, Untyped},
+    cap::LargePage,
+    cap_type::{Endpoint, Granule, IrqHandler, Notification, Untyped},
     init_thread::{self, suspend_self},
-    with_ipc_buffer_mut, CPtr, CapRights, MessageInfo, UntypedDesc,
+    with_ipc_buffer, with_ipc_buffer_mut, CPtr, CapRights, MessageInfo, ObjectBlueprintArm,
+    UntypedDesc, VmAttributes,
 };
 use sel4_root_task::{debug_println, root_task, Never};
 use spin::Mutex;
 
-static TASK_FILES: &[(&str, &[u8])] = &[(
-    "kernel-thread",
-    include_bytes_aligned!(16, "../../../build/kernel-thread.elf"),
-)];
+static TASK_FILES: &[(&str, &[u8])] = &[
+    (
+        "kernel-thread",
+        include_bytes_aligned!(16, "../../../build/kernel-thread.elf"),
+    ),
+    (
+        "block-thread",
+        include_bytes_aligned!(16, "../../../build/blk-thread.elf"),
+    ),
+];
 
 /// The object allocator for the root task.
 pub(crate) static OBJ_ALLOCATOR: Mutex<ObjectAllocator> = Mutex::new(ObjectAllocator::empty());
@@ -46,16 +54,22 @@ fn main(bootinfo: &sel4::BootInfoPtr) -> sel4::Result<Never> {
 
     // debug info
     {
-        debug_println!("[RootTask] mem_untyped_start: {:?}", mem_untyped_start);
         debug_println!(
-            "[RootTask] untyped list len: {:?}",
-            bootinfo.untyped_list().len()
+            "[RootTask] device untyped index range: {:?}",
+            bootinfo.device_untyped_range()
         );
-        debug_println!("[RootTask] untyped len: {:?}", bootinfo.untyped().len());
+        debug_println!(
+            "[RootTask] mem untyped index range: {:?}",
+            bootinfo.kernel_untyped_range()
+        );
         debug_println!(
             "[RootTask] untyped range: {:?}->{:?}",
             bootinfo.untyped().start(),
             bootinfo.untyped().end()
+        );
+        debug_println!(
+            "[RootTask] empty slot range: {:?}",
+            bootinfo.empty().range()
         );
 
         debug_println!("[RootTask] Untyped List: ");
@@ -69,7 +83,7 @@ fn main(bootinfo: &sel4::BootInfoPtr) -> sel4::Result<Never> {
         });
     }
 
-    // Kernel Use the Largest Untyped Memory Region
+    // Kernel Thread Use the Largest Untyped Memory Region
     let kernel_untyped = CPtr::from_bits(
         (mem_untyped_start
             + mem_untypes
@@ -100,6 +114,8 @@ fn main(bootinfo: &sel4::BootInfoPtr) -> sel4::Result<Never> {
 
     init_thread::slot::TCB.cap().debug_name(b"root");
 
+    // rebuild_cspace();
+
     let mut tasks = Vec::new();
 
     // Used for fault and normal IPC ( Reuse )
@@ -118,14 +134,84 @@ fn main(bootinfo: &sel4::BootInfoPtr) -> sel4::Result<Never> {
         )?);
     }
 
-    // Transfer a untyped memory to kernel_untyped_memory.
-    tasks[0]
-        .abs_cptr_with_depth(DEFAULT_CUSTOM_SLOT, CNODE_RADIX_BITS)
-        .copy(
-            &init_thread::slot::CNODE.cap().relative(kernel_untyped),
-            CapRights::all(),
-        )
-        .unwrap();
+    // Prepare Kernel Thread
+    {
+        tasks[0]
+            .abs_cptr_with_depth(DEFAULT_CUSTOM_SLOT, CNODE_RADIX_BITS)
+            .copy(
+                &init_thread::slot::CNODE.cap().relative(kernel_untyped),
+                CapRights::all(),
+            )
+            .unwrap();
+    }
+
+    // Prepare Block Thread
+    {
+        // Channel to send message to block thread
+        let blk_dev_ep = OBJ_ALLOCATOR.lock().allocate_fixed_sized::<Endpoint>();
+        // Set Notification for Blk-Thread Task.
+        let net_irq_not = OBJ_ALLOCATOR.lock().allocate_fixed_sized::<Notification>();
+        tasks[1]
+            .abs_cptr_with_depth(DEFAULT_CUSTOM_SLOT, CNODE_RADIX_BITS)
+            .copy(
+                &init_thread::slot::CNODE.cap().relative(net_irq_not),
+                CapRights::all(),
+            )
+            .unwrap();
+        tasks[1]
+            .abs_cptr_with_depth(DEFAULT_CUSTOM_SLOT + 2, CNODE_RADIX_BITS)
+            .copy(
+                &init_thread::slot::CNODE.cap().relative(blk_dev_ep),
+                CapRights::all(),
+            )
+            .unwrap();
+        // Map device memory to blk-thread task
+        let (found_device_idx, found_device_desc) = bootinfo
+            .untyped_list()
+            .iter()
+            .enumerate()
+            .find(|(_i, desc)| {
+                (desc.paddr()..(desc.paddr() + (1 << desc.size_bits()))).contains(&VIRTIO_MMIO_ADDR)
+            })
+            .expect("[RootTask] can't find device memory");
+        assert!(found_device_desc.is_device());
+
+        let device_untyped_cap = bootinfo.untyped().index(found_device_idx).cap();
+        let device_frame_slot = {
+            sel4::init_thread::Slot::from_index(OBJ_ALLOCATOR.lock().allocate_slot())
+                .downcast::<sel4::cap_type::LargePage>()
+        };
+
+        device_untyped_cap
+            .untyped_retype(
+                &ObjectBlueprintArm::LargePage.into(),
+                &init_thread::slot::CNODE.cap().relative_self(),
+                device_frame_slot.index(),
+                1,
+            )
+            .unwrap();
+
+        let device_frame_cap = device_frame_slot.cap();
+        debug_println!("[RootTask] device frame cap: {:?}", device_frame_cap);
+        let device_frame_addr = 0x1_2000_0000;
+        device_frame_cap
+            .frame_map(
+                tasks[1].vspace,
+                device_frame_addr,
+                CapRights::all(),
+                VmAttributes::DEFAULT,
+            )
+            .unwrap();
+        // Map DMA frame.
+        tasks[1].map_page(
+            DMA_ADDR_START,
+            OBJ_ALLOCATOR.lock().allocate_fixed_sized::<Granule>(),
+        );
+        tasks[1].map_page(
+            DMA_ADDR_START + PAGE_SIZE,
+            OBJ_ALLOCATOR.lock().allocate_fixed_sized::<Granule>(),
+        );
+    }
 
     // Start tasks
     run_tasks(&tasks);
@@ -177,10 +263,20 @@ fn main(bootinfo: &sel4::BootInfoPtr) -> sel4::Result<Never> {
                     irq_ep.call(info);
                     debug_println!("[RootTask] Sent IRQ to Kernel Thread");
                 }
-                _ => {
-                    debug_println!("[RootTask] Received IRQ");
+                RootMessageLabel::TranslateAddr(addr) => {
+                    let phys_addr = tasks[badge as usize]
+                        .mapped_page
+                        .get(&(addr / 0x1000 * 0x1000));
+                    let message = RootMessageLabel::TranslateAddr(
+                        phys_addr.unwrap().frame_get_address().unwrap() + addr % 0x1000,
+                    )
+                    .build();
+                    with_ipc_buffer_mut(|buffer| sel4::reply(buffer, message));
                 }
             }
+        } else {
+            let fault = with_ipc_buffer(|buffer| sel4::Fault::new(buffer, &message));
+            debug_println!("[RootTask] received fault {:#x?}", fault)
         }
         suspend_self()
     }

@@ -37,3 +37,6 @@ pub const GRANULE_SIZE: usize = sel4::FrameObjectType::GRANULE.bytes();
 
 /// The irq number of the serial device.
 pub const SERIAL_DEVICE_IRQ: usize = 33;
+pub const VIRTIO_NET_IRQ: usize = 0x2f + 0x20;
+
+pub const DMA_ADDR_START: usize = 0x1_0000_3000;

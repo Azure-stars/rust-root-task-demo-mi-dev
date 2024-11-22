@@ -15,4 +15,5 @@ members = [
     "crates/kernel-thread",
     "crates/common",
     "crates/shim",
+    "crates/blk-thread",
 ]

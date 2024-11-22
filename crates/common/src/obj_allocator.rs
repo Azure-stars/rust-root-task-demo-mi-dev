@@ -1,5 +1,5 @@
 use core::ops::Range;
-use sel4::cap::Untyped;
+use sel4::{cap::Untyped, init_thread};
 
 pub struct ObjectAllocator {
     empty_slots: Range<usize>,
@@ -51,5 +51,9 @@ impl ObjectAllocator {
             .unwrap()
             .downcast::<T>()
             .cap()
+    }
+
+    pub fn allocate_slot(&mut self) -> usize {
+        self.empty_slots.next().unwrap()
     }
 }
