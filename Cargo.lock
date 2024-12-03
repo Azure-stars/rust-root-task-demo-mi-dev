@@ -433,6 +433,7 @@ name = "root-task"
 version = "0.1.0"
 dependencies = [
  "buddy_system_allocator",
+ "cfg-if",
  "common",
  "crate-consts",
  "include_bytes_aligned",
@@ -440,7 +441,10 @@ dependencies = [
  "lazy_static",
  "object",
  "sel4 0.1.0 (git+https://github.com/seL4/rust-sel4?rev=1cd063a)",
+ "sel4-elf-header",
+ "sel4-initialize-tls",
  "sel4-root-task",
+ "sel4-stack",
  "spin",
  "task-helper",
  "xmas-elf",

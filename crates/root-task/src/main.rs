@@ -1,11 +1,14 @@
 #![no_std]
 #![no_main]
+#![feature(never_type)]
 
 extern crate alloc;
 
 mod task;
+mod thread;
 mod utils;
 use task::*;
+use thread::test_threads;
 use utils::*;
 
 use alloc::vec::Vec;
@@ -99,6 +102,8 @@ fn main(bootinfo: &sel4::BootInfoPtr) -> sel4::Result<Never> {
         .init(bootinfo.empty().range(), root_task_untyped);
 
     init_thread::slot::TCB.cap().debug_name(b"root");
+
+    test_threads(&bootinfo);
 
     let mut tasks = Vec::new();
 
