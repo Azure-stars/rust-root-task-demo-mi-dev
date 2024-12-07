@@ -1,5 +1,5 @@
 use crate::{abs_cptr, ObjectAllocator, GRANULE_SIZE, OBJ_ALLOCATOR};
-use alloc::vec::Vec;
+use alloc::{collections::btree_map::BTreeMap, vec::Vec};
 use core::ops::{DerefMut, Range};
 use crate_consts::CNODE_RADIX_BITS;
 use object::{
@@ -99,9 +99,10 @@ pub fn build_kernel_thread(
     let cnode = OBJ_ALLOCATOR
         .lock()
         .allocate_and_retyped_variable_sized::<CNode>(CNODE_RADIX_BITS);
-
+    let mut mapped_page = BTreeMap::new();
     let (vspace, ipc_buffer_addr, ipc_buffer_cap) = make_child_vspace(
         cnode,
+        &mut mapped_page,
         &File::parse(file_data).unwrap(),
         sel4::init_thread::slot::VSPACE.cap(),
         free_page_addr,
@@ -112,7 +113,15 @@ pub fn build_kernel_thread(
         .lock()
         .allocate_and_retyped_fixed_sized::<Tcb>();
 
-    let mut task = Sel4Task::new(tcb, cnode, fault_ep.0, vspace, fault_ep.1, irq_ep);
+    let mut task = Sel4Task::new(
+        tcb,
+        cnode,
+        fault_ep.0,
+        vspace,
+        mapped_page,
+        fault_ep.1,
+        irq_ep,
+    );
 
     // Configure TCB
     task.configure(2 * CNODE_RADIX_BITS, ipc_buffer_addr, ipc_buffer_cap)?;
@@ -154,6 +163,7 @@ pub fn run_tasks(tasks: &Vec<Sel4Task>) {
 /// - `sel4::cap::Granule`: IPC buffer 的 cap
 pub(crate) fn make_child_vspace<'a>(
     cnode: sel4::cap::CNode,
+    mapped_page: &mut BTreeMap<usize, sel4::cap::Granule>,
     image: &'a impl Object<'a>,
     caller_vspace: sel4::cap::VSpace,
     free_page_addr: usize,
@@ -200,6 +210,7 @@ pub(crate) fn make_child_vspace<'a>(
     // 将ELF的虚地址 map 到物理页
     map_image(
         allocator,
+        mapped_page,
         child_vspace,
         image_footprint.clone(),
         image,
@@ -218,6 +229,7 @@ pub(crate) fn make_child_vspace<'a>(
             sel4::VmAttributes::default(),
         )
         .unwrap();
+    mapped_page.insert(ipc_buffer_addr, ipc_buffer_cap);
 
     (child_vspace, ipc_buffer_addr, ipc_buffer_cap)
 }
@@ -268,6 +280,7 @@ fn map_intermediate_translation_tables(
 
 fn map_image<'a>(
     allocator: &mut ObjectAllocator,
+    mapped_page: &mut BTreeMap<usize, sel4::cap::Granule>,
     vspace: sel4::cap::VSpace,
     footprint: Range<usize>,
     image: &'a impl Object<'a>,
@@ -336,6 +349,7 @@ fn map_image<'a>(
         page_cap
             .frame_map(vspace, addr, rights.build(), sel4::VmAttributes::default())
             .unwrap();
+        mapped_page.insert(addr, page_cap);
     }
 }
 

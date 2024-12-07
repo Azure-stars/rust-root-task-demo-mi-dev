@@ -15,7 +15,7 @@ use crate_consts::*;
 use include_bytes_aligned::include_bytes_aligned;
 use sel4::{
     cap_type::{Endpoint, Granule, IrqHandler, Notification, Untyped},
-    init_thread::{self, suspend_self},
+    init_thread::{self},
     with_ipc_buffer, with_ipc_buffer_mut, CPtr, CapRights, Error, MessageInfo, ObjectBlueprintArm,
     UntypedDesc, VmAttributes,
 };
@@ -40,7 +40,7 @@ pub(crate) static OBJ_ALLOCATOR: Mutex<ObjectAllocator> = Mutex::new(ObjectAlloc
 pub(crate) static mut FREE_PAGE_PLACEHOLDER: FreePagePlaceHolder =
     FreePagePlaceHolder([0; GRANULE_SIZE]);
 
-#[root_task(heap_size = PAGE_SIZE * 32)]
+#[root_task(heap_size = 0x10_0000)]
 fn main(bootinfo: &sel4::BootInfoPtr) -> sel4::Result<Never> {
     // Sort the untyped memory region by size
     let mem_untyped_start =
@@ -317,6 +317,5 @@ fn main(bootinfo: &sel4::BootInfoPtr) -> sel4::Result<Never> {
             let fault = with_ipc_buffer(|buffer| sel4::Fault::new(buffer, &message));
             debug_println!("[RootTask] received fault {:#x?}", fault)
         }
-        suspend_self()
     }
 }

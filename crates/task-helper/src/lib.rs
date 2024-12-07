@@ -60,6 +60,7 @@ impl<H: TaskHelperTrait<Self>> Sel4TaskHelper<H> {
         cnode: sel4::cap::CNode,
         fault_ep: sel4::cap::Endpoint,
         vspace: sel4::cap::VSpace,
+        mapped_page: BTreeMap<usize, sel4::cap::Granule>,
         badge: u64,
         irq_ep: sel4::cap::Endpoint,
     ) -> Self {
@@ -68,7 +69,7 @@ impl<H: TaskHelperTrait<Self>> Sel4TaskHelper<H> {
             cnode,
             vspace,
             mapped_pt: Arc::new(Mutex::new(Vec::new())),
-            mapped_page: BTreeMap::new(),
+            mapped_page,
             stack_bottom: H::DEFAULT_STACK_TOP,
             phantom: PhantomData,
         };
@@ -129,6 +130,7 @@ impl<H: TaskHelperTrait<Self>> Sel4TaskHelper<H> {
                 _ => res.unwrap(),
             }
         }
+        unreachable!("Failed to map page!")
     }
 
     /// Configure task with setting CNode, Tcb and VSpace Cap

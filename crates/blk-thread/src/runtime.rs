@@ -6,10 +6,10 @@ use sel4_panicking::catch_unwind;
 use sel4_panicking_env::abort;
 use sel4_sync::PanickingRawMutex;
 
-const STACK_SIZE: usize = 1024 * 8;
+const STACK_SIZE: usize = 0x18000;
 sel4_runtime_common::declare_stack!(STACK_SIZE);
 
-const HEAP_SIZE: usize = 1024 * 8;
+const HEAP_SIZE: usize = 0x18000;
 static STATIC_HEAP: StaticHeap<HEAP_SIZE> = StaticHeap::new();
 
 #[global_allocator]
