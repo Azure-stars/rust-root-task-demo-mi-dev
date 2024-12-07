@@ -3,7 +3,7 @@
 
 use core::ptr::NonNull;
 
-use common::{RootMessageLabel, VIRTIO_MMIO_ADDR};
+use common::{RootMessageLabel, VIRTIO_MMIO_BLK_VIRT_ADDR};
 use crate_consts::{DEFAULT_CUSTOM_SLOT, DEFAULT_THREAD_FAULT_EP, VIRTIO_NET_IRQ};
 use sel4::{
     cap::{IrqHandler, Notification},
@@ -26,7 +26,8 @@ sel4_panicking_env::register_debug_put_char!(sel4::sys::seL4_DebugPutChar);
 fn main() -> ! {
     debug_println!("[BlockThread] EntryPoint");
     let mut virtio_blk = VirtIOBlk::<HalImpl, MmioTransport>::new(unsafe {
-        MmioTransport::new(NonNull::new(VIRTIO_MMIO_ADDR as *mut VirtIOHeader).unwrap()).unwrap()
+        MmioTransport::new(NonNull::new(VIRTIO_MMIO_BLK_VIRT_ADDR as *mut VirtIOHeader).unwrap())
+            .unwrap()
     })
     .expect("[BlockThread] failed to create blk driver");
 

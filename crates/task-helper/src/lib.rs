@@ -6,11 +6,11 @@ extern crate alloc;
 use alloc::{collections::btree_map::BTreeMap, sync::Arc, vec::Vec};
 use core::marker::PhantomData;
 use crate_consts::{
-    CNODE_RADIX_BITS, DEFAULT_THREAD_FAULT_EP, DEFAULT_THREAD_IRQ_EP, DEFAULT_THREAD_NOTIFICATION,
-    PAGE_SIZE, STACK_ALIGN_SIZE,
+    DEFAULT_THREAD_FAULT_EP, DEFAULT_THREAD_IRQ_EP, DEFAULT_THREAD_NOTIFICATION, PAGE_SIZE,
+    STACK_ALIGN_SIZE,
 };
 use sel4::{
-    cap::{Granule, Notification},
+    cap::{Granule, Notification, Null},
     init_thread, AbsoluteCPtr, CNodeCapData, CPtr, CPtrBits, CapRights, Error, HasCPtrWithDepth,
     VmAttributes as VMAttributes,
 };
@@ -74,17 +74,17 @@ impl<H: TaskHelperTrait<Self>> Sel4TaskHelper<H> {
         };
 
         // Move Fault EP to child process
-        task.abs_cptr_with_depth(DEFAULT_THREAD_FAULT_EP, CNODE_RADIX_BITS)
+        task.abs_cptr(DEFAULT_THREAD_FAULT_EP)
             .mint(&cnode_relative(fault_ep), CapRights::all(), badge)
             .unwrap();
 
         // Move IRQ EP to child process
-        task.abs_cptr_with_depth(DEFAULT_THREAD_IRQ_EP, CNODE_RADIX_BITS)
+        task.abs_cptr(DEFAULT_THREAD_IRQ_EP)
             .mint(&cnode_relative(irq_ep), CapRights::all(), badge)
             .unwrap();
 
         // Copy ASIDPool to the task, children can assign another children.
-        task.abs_cptr_with_depth(init_thread::slot::ASID_POOL.cptr_bits(), CNODE_RADIX_BITS)
+        task.abs_cptr(init_thread::slot::ASID_POOL.cptr_bits())
             .copy(
                 &cnode_relative(init_thread::slot::ASID_POOL.cap()),
                 CapRights::all(),
@@ -92,15 +92,12 @@ impl<H: TaskHelperTrait<Self>> Sel4TaskHelper<H> {
             .unwrap();
 
         // Copy ASIDControl to the task, children can assign another children.
-        task.abs_cptr_with_depth(
-            init_thread::slot::ASID_CONTROL.cptr_bits(),
-            CNODE_RADIX_BITS,
-        )
-        .copy(
-            &cnode_relative(init_thread::slot::ASID_CONTROL.cap()),
-            CapRights::all(),
-        )
-        .unwrap();
+        task.abs_cptr(init_thread::slot::ASID_CONTROL.cptr_bits())
+            .copy(
+                &cnode_relative(init_thread::slot::ASID_CONTROL.cap()),
+                CapRights::all(),
+            )
+            .unwrap();
 
         task
     }
@@ -142,7 +139,7 @@ impl<H: TaskHelperTrait<Self>> Sel4TaskHelper<H> {
         ipc_buffer_cap: Granule,
     ) -> Result<(), Error> {
         // Move cap rights to task
-        self.abs_cptr_with_depth(init_thread::slot::CNODE.cptr_bits(), CNODE_RADIX_BITS)
+        self.abs_cptr(init_thread::slot::CNODE.cptr_bits())
             .mint(
                 &cnode_relative(self.cnode),
                 CapRights::all(),
@@ -151,12 +148,12 @@ impl<H: TaskHelperTrait<Self>> Sel4TaskHelper<H> {
             .unwrap();
 
         // Copy tcb to task
-        self.abs_cptr_with_depth(init_thread::slot::TCB.cptr_bits(), CNODE_RADIX_BITS)
+        self.abs_cptr(init_thread::slot::TCB.cptr_bits())
             .copy(&cnode_relative(self.tcb), CapRights::all())
             .unwrap();
 
         // Copy vspace to task
-        self.abs_cptr_with_depth(init_thread::slot::VSPACE.cptr_bits(), CNODE_RADIX_BITS)
+        self.abs_cptr(init_thread::slot::VSPACE.cptr_bits())
             .copy(&cnode_relative(self.vspace), CapRights::all())
             .unwrap();
 
@@ -180,10 +177,10 @@ impl<H: TaskHelperTrait<Self>> Sel4TaskHelper<H> {
     }
 
     /// Get the the absolute cptr related to task's cnode through cptr_bits.
-    pub fn abs_cptr_with_depth(&self, cptr_bits: CPtrBits, depth: usize) -> AbsoluteCPtr {
-        self.cnode.relative_bits_with_depth(cptr_bits, depth)
+    pub fn abs_cptr(&self, cptr_bits: CPtrBits) -> AbsoluteCPtr {
+        self.cnode
+            .relative(Null::from_cptr(CPtr::from_bits(cptr_bits)))
     }
-
     /// Clone a new thread from the current thread.
     pub fn clone_thread(&self, tcb: sel4::cap::Tcb) -> Self {
         Self {

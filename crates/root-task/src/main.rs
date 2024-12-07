@@ -6,6 +6,7 @@ extern crate alloc;
 mod task;
 mod utils;
 use task::*;
+use task_helper::TaskHelperTrait;
 use utils::*;
 
 use alloc::vec::Vec;
@@ -13,10 +14,9 @@ use common::*;
 use crate_consts::*;
 use include_bytes_aligned::include_bytes_aligned;
 use sel4::{
-    cap::LargePage,
     cap_type::{Endpoint, Granule, IrqHandler, Notification, Untyped},
     init_thread::{self, suspend_self},
-    with_ipc_buffer, with_ipc_buffer_mut, CPtr, CapRights, MessageInfo, ObjectBlueprintArm,
+    with_ipc_buffer, with_ipc_buffer_mut, CPtr, CapRights, Error, MessageInfo, ObjectBlueprintArm,
     UntypedDesc, VmAttributes,
 };
 use sel4_root_task::{debug_println, root_task, Never};
@@ -114,14 +114,18 @@ fn main(bootinfo: &sel4::BootInfoPtr) -> sel4::Result<Never> {
 
     init_thread::slot::TCB.cap().debug_name(b"root");
 
-    // rebuild_cspace();
+    rebuild_cspace();
 
     let mut tasks = Vec::new();
 
     // Used for fault and normal IPC ( Reuse )
-    let fault_ep = OBJ_ALLOCATOR.lock().allocate_fixed_sized::<Endpoint>();
+    let fault_ep = OBJ_ALLOCATOR
+        .lock()
+        .allocate_and_retyped_fixed_sized::<Endpoint>();
     // Used for IRQ Registration with slot transfer
-    let irq_ep = OBJ_ALLOCATOR.lock().allocate_fixed_sized::<Endpoint>();
+    let irq_ep = OBJ_ALLOCATOR
+        .lock()
+        .allocate_and_retyped_fixed_sized::<Endpoint>();
     let common_irq_handler = OBJ_ALLOCATOR.lock().allocate_normal_cap::<IrqHandler>();
 
     for task in TASK_FILES.iter() {
@@ -137,7 +141,7 @@ fn main(bootinfo: &sel4::BootInfoPtr) -> sel4::Result<Never> {
     // Prepare Kernel Thread
     {
         tasks[0]
-            .abs_cptr_with_depth(DEFAULT_CUSTOM_SLOT, CNODE_RADIX_BITS)
+            .abs_cptr(DEFAULT_CUSTOM_SLOT)
             .copy(
                 &init_thread::slot::CNODE.cap().relative(kernel_untyped),
                 CapRights::all(),
@@ -148,69 +152,104 @@ fn main(bootinfo: &sel4::BootInfoPtr) -> sel4::Result<Never> {
     // Prepare Block Thread
     {
         // Channel to send message to block thread
-        let blk_dev_ep = OBJ_ALLOCATOR.lock().allocate_fixed_sized::<Endpoint>();
+        let blk_dev_ep = OBJ_ALLOCATOR
+            .lock()
+            .allocate_and_retyped_fixed_sized::<Endpoint>();
         // Set Notification for Blk-Thread Task.
-        let net_irq_not = OBJ_ALLOCATOR.lock().allocate_fixed_sized::<Notification>();
+        let net_irq_not = OBJ_ALLOCATOR
+            .lock()
+            .allocate_and_retyped_fixed_sized::<Notification>();
+        tasks[0]
+            .abs_cptr(DEFAULT_CUSTOM_SLOT + 1)
+            .copy(&utils::abs_cptr(blk_dev_ep), CapRights::all())
+            .unwrap();
         tasks[1]
-            .abs_cptr_with_depth(DEFAULT_CUSTOM_SLOT, CNODE_RADIX_BITS)
+            .abs_cptr(DEFAULT_CUSTOM_SLOT)
             .copy(
                 &init_thread::slot::CNODE.cap().relative(net_irq_not),
                 CapRights::all(),
             )
             .unwrap();
         tasks[1]
-            .abs_cptr_with_depth(DEFAULT_CUSTOM_SLOT + 2, CNODE_RADIX_BITS)
+            .abs_cptr(DEFAULT_CUSTOM_SLOT + 2)
             .copy(
                 &init_thread::slot::CNODE.cap().relative(blk_dev_ep),
                 CapRights::all(),
             )
             .unwrap();
         // Map device memory to blk-thread task
-        let (found_device_idx, found_device_desc) = bootinfo
-            .untyped_list()
-            .iter()
-            .enumerate()
-            .find(|(_i, desc)| {
-                (desc.paddr()..(desc.paddr() + (1 << desc.size_bits()))).contains(&VIRTIO_MMIO_ADDR)
-            })
-            .expect("[RootTask] can't find device memory");
+        let (found_device_idx, found_device_desc) = bootinfo.untyped_list()
+            [bootinfo.device_untyped_range()]
+        .iter()
+        .enumerate()
+        .find(|(_i, desc)| {
+            (desc.paddr()..(desc.paddr() + (1 << desc.size_bits()))).contains(&VIRTIO_MMIO_ADDR)
+        })
+        .expect("[RootTask] can't find device memory");
         assert!(found_device_desc.is_device());
 
         let device_untyped_cap = bootinfo.untyped().index(found_device_idx).cap();
-        let device_frame_slot = {
-            sel4::init_thread::Slot::from_index(OBJ_ALLOCATOR.lock().allocate_slot())
-                .downcast::<sel4::cap_type::LargePage>()
-        };
+        // let device_frame_slot = {
+        //     sel4::init_thread::Slot::from_index(OBJ_ALLOCATOR.lock().allocate_slot())
+        //         .downcast::<sel4::cap_type::LargePage>()
+        // };
+        let (device_slot_index, device_cnode_index, device_index) =
+            OBJ_ALLOCATOR.lock().allocate_slot();
+        let device_frame_slot = sel4::init_thread::Slot::from_index(device_index)
+            .downcast::<sel4::cap_type::LargePage>();
 
         device_untyped_cap
             .untyped_retype(
                 &ObjectBlueprintArm::LargePage.into(),
-                &init_thread::slot::CNODE.cap().relative_self(),
-                device_frame_slot.index(),
+                &init_thread::slot::CNODE
+                    .cap()
+                    .relative_bits_with_depth(device_cnode_index as u64, 52),
+                device_slot_index,
                 1,
             )
             .unwrap();
 
         let device_frame_cap = device_frame_slot.cap();
-        debug_println!("[RootTask] device frame cap: {:?}", device_frame_cap);
-        let device_frame_addr = 0x1_2000_0000;
-        device_frame_cap
-            .frame_map(
+        // let device_frame_addr = 0x10_2000_0000;
+        assert!(device_frame_cap.frame_get_address().unwrap() < VIRTIO_MMIO_ADDR);
+        loop {
+            match device_frame_cap.frame_map(
                 tasks[1].vspace,
-                device_frame_addr,
+                VIRTIO_MMIO_VIRT_ADDR,
                 CapRights::all(),
                 VmAttributes::DEFAULT,
-            )
-            .unwrap();
+            ) {
+                Ok(()) => {
+                    debug_println!("[RootTask] map device memory success");
+                    break;
+                }
+                Err(Error::FailedLookup) => {
+                    debug_println!(
+                        "[RootTask] map device memory failed, try to allocate page table"
+                    );
+                    let pt = TaskImpl::allocate_pt(&mut tasks[1]);
+                    pt.pt_map(
+                        tasks[1].vspace,
+                        VIRTIO_MMIO_VIRT_ADDR,
+                        VmAttributes::DEFAULT,
+                    )
+                    .unwrap();
+                    tasks[1].mapped_pt.lock().push(pt);
+                }
+                Err(e) => {
+                    panic!("[RootTask] map device memory failed: {:?}", e);
+                }
+            }
+        }
         // Map DMA frame.
-        tasks[1].map_page(
-            DMA_ADDR_START,
-            OBJ_ALLOCATOR.lock().allocate_fixed_sized::<Granule>(),
-        );
-        tasks[1].map_page(
-            DMA_ADDR_START + PAGE_SIZE,
-            OBJ_ALLOCATOR.lock().allocate_fixed_sized::<Granule>(),
-        );
+        let page_cap = OBJ_ALLOCATOR
+            .lock()
+            .allocate_and_retyped_fixed_sized::<Granule>();
+        tasks[1].map_page(DMA_ADDR_START, page_cap);
+        let page_cap = OBJ_ALLOCATOR
+            .lock()
+            .allocate_and_retyped_fixed_sized::<Granule>();
+        tasks[1].map_page(DMA_ADDR_START + PAGE_SIZE, page_cap);
     }
 
     // Start tasks

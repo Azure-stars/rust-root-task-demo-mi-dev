@@ -17,7 +17,6 @@ unsafe impl Hal for HalImpl {
         let vaddr = DMA_ADDR.load(Ordering::Acquire);
         DMA_ADDR.store(vaddr + pages * PAGE_SIZE, Ordering::Release);
         let ep = Endpoint::from_bits(DEFAULT_THREAD_FAULT_EP);
-
         let root_message =
             RootMessageLabel::try_from(&ep.call(RootMessageLabel::TranslateAddr(vaddr).build()));
         match root_message {

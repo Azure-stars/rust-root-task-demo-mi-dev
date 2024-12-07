@@ -10,9 +10,12 @@ use sel4::{
 };
 use sel4_panicking_env::debug_println;
 
+#[allow(unused)]
 pub fn test_irq() {
     let irq_handler = OBJ_ALLOCATOR.lock().allocate_normal_cap::<IrqHandler>();
-    let ntfn = OBJ_ALLOCATOR.lock().allocate_fixed_sized::<Notification>();
+    let ntfn = OBJ_ALLOCATOR
+        .lock()
+        .allocate_and_retyped_fixed_sized::<Notification>();
     let ep = sel4::cap::Endpoint::from_bits(DEFAULT_THREAD_FAULT_EP);
 
     ep.call(RootMessageLabel::RegisterIRQ(irq_handler.bits(), SERIAL_DEVICE_IRQ as _).build());
@@ -27,7 +30,9 @@ pub fn test_irq_with_cap_transfer() {
     let ep = sel4::cap::Endpoint::from_bits(DEFAULT_THREAD_FAULT_EP);
     let irq_ep = sel4::cap::Endpoint::from_bits(DEFAULT_THREAD_IRQ_EP);
     let irq_handler = sel4::cap::IrqHandler::from_bits(DEFAULT_THREAD_RECV_SLOT);
-    let notification = OBJ_ALLOCATOR.lock().allocate_fixed_sized::<Notification>();
+    let notification = OBJ_ALLOCATOR
+        .lock()
+        .allocate_and_retyped_fixed_sized::<Notification>();
 
     ep.call(RootMessageLabel::RegisterIRQWithCap(SERIAL_DEVICE_IRQ as _).build());
 

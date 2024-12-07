@@ -96,16 +96,20 @@ impl Drop for Sel4Task {
 
 impl Sel4Task {
     pub fn new() -> Sel4Task {
-        let vspace = OBJ_ALLOCATOR.lock().allocate_fixed_sized::<VSpace>();
+        let vspace = OBJ_ALLOCATOR
+            .lock()
+            .allocate_and_retyped_fixed_sized::<VSpace>();
         init_thread::slot::ASID_POOL
             .cap()
             .asid_pool_assign(vspace)
             .unwrap();
 
-        let tcb = OBJ_ALLOCATOR.lock().allocate_fixed_sized::<Tcb>();
+        let tcb = OBJ_ALLOCATOR
+            .lock()
+            .allocate_and_retyped_fixed_sized::<Tcb>();
         let cnode = OBJ_ALLOCATOR
             .lock()
-            .allocate_variable_sized::<CNode>(CNODE_RADIX_BITS);
+            .allocate_and_retyped_variable_sized::<CNode>(CNODE_RADIX_BITS);
 
         Sel4Task {
             tcb,
@@ -133,7 +137,9 @@ impl Sel4Task {
                     return;
                 }
                 Err(Error::FailedLookup) => {
-                    let pt_cap = OBJ_ALLOCATOR.lock().allocate_fixed_sized::<PT>();
+                    let pt_cap = OBJ_ALLOCATOR
+                        .lock()
+                        .allocate_and_retyped_fixed_sized::<PT>();
                     pt_cap
                         .pt_map(self.vspace, vaddr, VmAttributes::DEFAULT)
                         .unwrap();
@@ -155,7 +161,9 @@ impl Sel4Task {
         let mut stack_ptr = DEFAULT_USER_STACK_SIZE;
 
         for vaddr in (start..end).step_by(PAGE_SIZE) {
-            let page_cap = OBJ_ALLOCATOR.lock().allocate_fixed_sized::<Granule>();
+            let page_cap = OBJ_ALLOCATOR
+                .lock()
+                .allocate_and_retyped_fixed_sized::<Granule>();
             if vaddr == DEFAULT_USER_STACK_SIZE - PAGE_SIZE {
                 page_cap
                     .frame_map(
@@ -247,7 +255,9 @@ impl Sel4Task {
                             page_cap.frame_unmap().unwrap();
                             page_cap
                         }
-                        None => OBJ_ALLOCATOR.lock().allocate_fixed_sized::<Granule>(),
+                        None => OBJ_ALLOCATOR
+                            .lock()
+                            .allocate_and_retyped_fixed_sized::<Granule>(),
                     };
 
                     // If need to read data from elf file.
@@ -299,7 +309,9 @@ impl Sel4Task {
             return self.heap;
         }
         for vaddr in (self.heap..value).step_by(PAGE_SIZE) {
-            let page_cap = OBJ_ALLOCATOR.lock().allocate_fixed_sized::<Granule>();
+            let page_cap = OBJ_ALLOCATOR
+                .lock()
+                .allocate_and_retyped_fixed_sized::<Granule>();
             self.map_page(vaddr, page_cap);
         }
         value

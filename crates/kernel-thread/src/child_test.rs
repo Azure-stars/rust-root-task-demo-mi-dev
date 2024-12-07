@@ -54,7 +54,9 @@ pub fn test_child(ep: Endpoint) -> Result<()> {
         args,
     );
 
-    let ipc_buffer_cap = OBJ_ALLOCATOR.lock().allocate_fixed_sized::<Granule>();
+    let ipc_buffer_cap = OBJ_ALLOCATOR
+        .lock()
+        .allocate_and_retyped_fixed_sized::<Granule>();
     let max = child_elf_file
         .section_iter()
         .fold(0, |acc, x| cmp::max(acc, x.address() + x.size()));
@@ -113,7 +115,9 @@ pub fn test_child(ep: Endpoint) -> Result<()> {
             match fault {
                 Fault::VmFault(vmfault) => {
                     let vaddr = align_bits(vmfault.addr() as usize, PAGE_SIZE_BITS);
-                    let page_cap = OBJ_ALLOCATOR.lock().allocate_fixed_sized::<Granule>();
+                    let page_cap = OBJ_ALLOCATOR
+                        .lock()
+                        .allocate_and_retyped_fixed_sized::<Granule>();
 
                     task.map_page(vaddr, page_cap);
 

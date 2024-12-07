@@ -27,7 +27,9 @@ pub fn handle_ipc_call(
                 if task.mapped_page.get(&vaddr).is_some() {
                     continue;
                 }
-                let page_cap = OBJ_ALLOCATOR.lock().allocate_fixed_sized::<Granule>();
+                let page_cap = OBJ_ALLOCATOR
+                    .lock()
+                    .allocate_and_retyped_fixed_sized::<Granule>();
                 task.map_page(vaddr, page_cap);
             }
             addr

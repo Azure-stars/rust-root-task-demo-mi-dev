@@ -10,6 +10,12 @@ use sel4::{with_ipc_buffer, with_ipc_buffer_mut, CPtrBits, MessageInfo};
 // FIXME: Make this variable more generic.
 pub const VIRTIO_MMIO_ADDR: usize = 0xa003e00;
 
+pub const VIRTIO_MMIO_VIRT_ADDR: usize = 0x1_2000_0000;
+
+pub const VIRTIO_BLK_OFFSET: usize = 0x3e00;
+
+pub const VIRTIO_MMIO_BLK_VIRT_ADDR: usize = VIRTIO_MMIO_VIRT_ADDR + VIRTIO_BLK_OFFSET;
+
 /// Impl custom message label quickly.
 macro_rules! impl_message_label {
     {

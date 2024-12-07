@@ -33,6 +33,11 @@ loader_cli := $(loader_artifacts_dir)/sel4-kernel-loader-add-payload
 app_crate := root-task
 app := $(build_dir)/$(app_crate).elf
 
+qemu_args := 
+qemu_args += -drive file=mount.img,if=none,format=raw,id=x0
+qemu_args += -device virtio-blk-device,drive=x0
+
+
 $(app): $(app).intermediate
 
 # SEL4_TARGET_PREFIX is used by build.rs scripts of various rust-sel4 crates to locate seL4
@@ -40,18 +45,10 @@ $(app): $(app).intermediate
 .INTERMDIATE: $(app).intermediate
 $(app).intermediate:
 	SEL4_PREFIX=$(sel4_prefix) \
-	RUSTFLAGS="-Clink-arg=-Tcrates/shim/link.ld" \
 		cargo build \
 			--target $(TARGET) \
 			--target-dir $(abspath $(build_dir)/target) \
-			--out-dir $(build_dir) \
-			--release \
-			-p shim
-	SEL4_PREFIX=$(sel4_prefix) \
-		cargo build \
-			--target $(TARGET) \
-			--target-dir $(abspath $(build_dir)/target) \
-			--out-dir $(build_dir) \
+			--artifact-dir $(build_dir) \
 			--release \
 			-p kernel-thread -p blk-thread
 	cargo build \
@@ -71,6 +68,7 @@ $(image): $(app) $(loader) $(loader_cli)
 
 qemu_cmd := \
 	qemu-system-aarch64 \
+		$(qemu_args) \
 		-machine virt,virtualization=on -cpu cortex-a57 -m size=1G \
 		-serial mon:stdio \
 		-nographic \
@@ -79,6 +77,7 @@ qemu_cmd := \
 .PHONY: run
 run: $(image)
 	$(qemu_cmd)
+	rm $(image)
 
 .PHONY: test
 test: test.py $(image)

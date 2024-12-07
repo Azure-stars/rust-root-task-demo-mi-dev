@@ -52,7 +52,9 @@ fn main() -> ! {
     );
 
     test_func!("[KernelThread] Test Thread", {
-        let ep = OBJ_ALLOCATOR.lock().allocate_fixed_sized::<Endpoint>();
+        let ep = OBJ_ALLOCATOR
+            .lock()
+            .allocate_and_retyped_fixed_sized::<Endpoint>();
         child_test::test_child(ep).unwrap()
     });
     debug_println!("[KernelThread] Say Goodbye");

@@ -1,7 +1,7 @@
-use crate::{ObjectAllocator, GRANULE_SIZE, OBJ_ALLOCATOR};
+use crate::{abs_cptr, ObjectAllocator, GRANULE_SIZE, OBJ_ALLOCATOR};
 use alloc::vec::Vec;
 use core::ops::{DerefMut, Range};
-use crate_consts::{CNODE_RADIX_BITS, DEFAULT_CUSTOM_SLOT};
+use crate_consts::CNODE_RADIX_BITS;
 use object::{
     elf::{PF_R, PF_W, PF_X},
     File, Object, ObjectSegment, SegmentFlags,
@@ -23,18 +23,22 @@ impl TaskHelperTrait<Sel4TaskHelper<Self>> for TaskImpl {
     const DEFAULT_STACK_TOP: usize = 0x1_0000_0000;
 
     fn allocate_pt(_task: &mut Self::Task) -> sel4::cap::PT {
-        OBJ_ALLOCATOR.lock().allocate_fixed_sized::<PT>()
+        OBJ_ALLOCATOR
+            .lock()
+            .allocate_and_retyped_fixed_sized::<PT>()
     }
 
     fn allocate_page(_task: &mut Self::Task) -> sel4::cap::SmallPage {
-        OBJ_ALLOCATOR.lock().allocate_fixed_sized::<SmallPage>()
+        OBJ_ALLOCATOR
+            .lock()
+            .allocate_and_retyped_fixed_sized::<SmallPage>()
     }
 }
 
 pub fn rebuild_cspace() {
     let cnode = OBJ_ALLOCATOR
         .lock()
-        .allocate_variable_sized::<CNode>(CNODE_RADIX_BITS);
+        .allocate_variable_sized_origin::<CNode>(CNODE_RADIX_BITS);
     cnode
         .relative_bits_with_depth(0, CNODE_RADIX_BITS)
         .mint(
@@ -92,23 +96,26 @@ pub fn build_kernel_thread(
     free_page_addr: usize,
 ) -> sel4::Result<Sel4Task> {
     // make 新线程的虚拟地址空间
+    let cnode = OBJ_ALLOCATOR
+        .lock()
+        .allocate_and_retyped_variable_sized::<CNode>(CNODE_RADIX_BITS);
+
     let (vspace, ipc_buffer_addr, ipc_buffer_cap) = make_child_vspace(
+        cnode,
         &File::parse(file_data).unwrap(),
         sel4::init_thread::slot::VSPACE.cap(),
         free_page_addr,
         sel4::init_thread::slot::ASID_POOL.cap(),
     );
 
-    let cnode = OBJ_ALLOCATOR
+    let tcb = OBJ_ALLOCATOR
         .lock()
-        .allocate_variable_sized::<CNode>(CNODE_RADIX_BITS);
-
-    let tcb = OBJ_ALLOCATOR.lock().allocate_fixed_sized::<Tcb>();
+        .allocate_and_retyped_fixed_sized::<Tcb>();
 
     let mut task = Sel4Task::new(tcb, cnode, fault_ep.0, vspace, fault_ep.1, irq_ep);
 
     // Configure TCB
-    task.configure(CNODE_RADIX_BITS, ipc_buffer_addr, ipc_buffer_cap)?;
+    task.configure(2 * CNODE_RADIX_BITS, ipc_buffer_addr, ipc_buffer_cap)?;
 
     // Map stack for the task.
     task.map_stack(10);
@@ -146,14 +153,39 @@ pub fn run_tasks(tasks: &Vec<Sel4Task>) {
 /// - `usize`: IPC buffer 的地址
 /// - `sel4::cap::Granule`: IPC buffer 的 cap
 pub(crate) fn make_child_vspace<'a>(
+    cnode: sel4::cap::CNode,
     image: &'a impl Object<'a>,
     caller_vspace: sel4::cap::VSpace,
     free_page_addr: usize,
     asid_pool: sel4::cap::AsidPool,
 ) -> (sel4::cap::VSpace, usize, sel4::cap::Granule) {
+    let inner_cnode = OBJ_ALLOCATOR
+        .lock()
+        .allocate_and_retyped_variable_sized::<CNode>(CNODE_RADIX_BITS);
     let mut allocator = OBJ_ALLOCATOR.lock();
     let allocator = allocator.deref_mut();
-    let child_vspace = allocator.allocate_fixed_sized::<sel4::cap_type::VSpace>();
+    let child_vspace = allocator.allocate_and_retyped_fixed_sized::<sel4::cap_type::VSpace>();
+    // Build 2 level CSpace.
+    // | unused (40 bits) | Level1 (12 bits) | Level0 (12 bits) |
+    cnode
+        .relative_bits_with_depth(0, CNODE_RADIX_BITS)
+        .mutate(
+            &abs_cptr(inner_cnode),
+            CNodeCapData::skip(0).into_word() as _,
+        )
+        .unwrap();
+    abs_cptr(Null::from_bits(0))
+        .mutate(
+            &abs_cptr(cnode),
+            CNodeCapData::skip_high_bits(2 * CNODE_RADIX_BITS).into_word() as _,
+        )
+        .unwrap();
+    abs_cptr(cnode)
+        .mutate(
+            &abs_cptr(Null::from_bits(0)),
+            CNodeCapData::skip_high_bits(2 * CNODE_RADIX_BITS).into_word() as _,
+        )
+        .unwrap();
     asid_pool.asid_pool_assign(child_vspace).unwrap();
 
     let image_footprint = footprint(image);
@@ -177,7 +209,7 @@ pub(crate) fn make_child_vspace<'a>(
 
     // make ipc buffer
     let ipc_buffer_addr = image_footprint.end;
-    let ipc_buffer_cap = allocator.allocate_fixed_sized::<sel4::cap_type::Granule>();
+    let ipc_buffer_cap = allocator.allocate_and_retyped_fixed_sized::<sel4::cap_type::Granule>();
     ipc_buffer_cap
         .frame_map(
             child_vspace,
@@ -221,7 +253,7 @@ fn map_intermediate_translation_tables(
             let ty = sel4::TranslationTableObjectType::from_level(level).unwrap();
             let addr = footprint_at_level.start + i * span_bytes;
             allocator
-                .allocate(ty.blueprint())
+                .allocate_and_retype(ty.blueprint())
                 .cast::<sel4::cap_type::UnspecifiedIntermediateTranslationTable>()
                 .generic_intermediate_translation_table_map(
                     ty,
@@ -247,7 +279,7 @@ fn map_image<'a>(
     let mut pages = (0..num_pages)
         .map(|_| {
             (
-                allocator.allocate_fixed_sized::<sel4::cap_type::Granule>(),
+                allocator.allocate_and_retyped_fixed_sized::<sel4::cap_type::Granule>(),
                 sel4::CapRightsBuilder::none(),
             )
         })

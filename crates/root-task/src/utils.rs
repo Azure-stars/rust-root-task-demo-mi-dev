@@ -1,4 +1,5 @@
 use crate_consts::GRANULE_SIZE;
+use sel4::{init_thread, AbsoluteCPtr, HasCPtrWithDepth};
 
 use crate::FREE_PAGE_PLACEHOLDER;
 
@@ -26,4 +27,9 @@ fn get_user_image_frame_slot(
     bootinfo
         .user_image_frames()
         .index(addr / GRANULE_SIZE - user_image_addr / GRANULE_SIZE)
+}
+
+/// Get [AbsoluteCPtr] from current CSpace though path.
+pub fn abs_cptr<T: HasCPtrWithDepth>(path: T) -> AbsoluteCPtr {
+    init_thread::slot::CNODE.cap().relative(path)
 }
