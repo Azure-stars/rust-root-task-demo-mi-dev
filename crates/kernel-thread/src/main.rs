@@ -12,6 +12,7 @@ mod irq_test;
 mod logging;
 mod runtime;
 mod task;
+mod thread;
 mod utils;
 
 use common::ObjectAllocator;
@@ -50,6 +51,8 @@ fn main() -> ! {
         "[KernelThread] Test IRQ",
         irq_test::test_irq_with_cap_transfer()
     );
+
+    test_func!("[KernelThread] Test thread", thread::test_threads());
 
     test_func!("[KernelThread] Test Thread", {
         let ep = OBJ_ALLOCATOR

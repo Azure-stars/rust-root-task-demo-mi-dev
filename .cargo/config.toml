@@ -7,8 +7,8 @@
 [env]
 RUST_TARGET_PATH = { value = "support/targets", relative = true }
 # SEL4_PREFIX = { value = "/opt/seL4", relative = false }
-# SEL4_PREFIX = { value = "/opt/reL4", relative = false }
-SEL4_PREFIX = { value = "/home/ubuntu/src_code/rust/sel4-rel4/seL4/install" }
+SEL4_PREFIX = { value = "/opt/reL4", relative = false }
+# SEL4_PREFIX = { value = "/opt/seL4/libsel4/include" }
 
 [build]
 target = "aarch64-sel4"
