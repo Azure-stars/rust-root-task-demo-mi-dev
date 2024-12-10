@@ -4,18 +4,22 @@ use crate::{
     utils::align_bits,
     OBJ_ALLOCATOR,
 };
+use alloc::collections::btree_map::BTreeMap;
 use common::CustomMessageLabel;
 use core::cmp;
-use crate_consts::{CNODE_RADIX_BITS, PAGE_SIZE, PAGE_SIZE_BITS};
+use crate_consts::{CNODE_RADIX_BITS, DEFAULT_THREAD_FAULT_EP, PAGE_SIZE, PAGE_SIZE_BITS};
 use sel4::{
     cap::Endpoint, cap_type::Granule, debug_println, init_thread, r#yield, reply, with_ipc_buffer,
     with_ipc_buffer_mut, CNodeCapData, CapRights, Fault, MessageInfo, Result, Word,
 };
+use spin::Mutex;
 use xmas_elf::ElfFile;
 
 // TODO: Make elf file path dynamically available.
 const CHILD_ELF: &[u8] = include_bytes!("../../../build/test-thread.elf");
 const BUSYBOX_ELF: &[u8] = include_bytes!("../../../busybox");
+
+pub static TASK_MAP: Mutex<BTreeMap<u64, Sel4Task>> = Mutex::new(BTreeMap::new());
 
 pub fn test_child(ep: Endpoint) -> Result<()> {
     let args = &["busybox", "echo", "Kernel Thread's Child Says Hello!"];
@@ -33,12 +37,12 @@ pub fn test_child(ep: Endpoint) -> Result<()> {
 
     // Copy EndPoint to child
     task.cnode
-        .relative_bits_with_depth(ep.cptr().bits(), CNODE_RADIX_BITS)
-        .copy(
+        .relative_bits_with_depth(DEFAULT_THREAD_FAULT_EP, CNODE_RADIX_BITS)
+        .mint(
             &init_thread::slot::CNODE.cap().relative(ep),
             CapRights::all(),
-        )
-        .unwrap();
+            TASK_MAP.lock().len() as u64,
+        )?;
 
     debug_println!("[KernelThread] Child Task Mapping ELF...");
     task.load_elf(CHILD_ELF);
@@ -99,13 +103,15 @@ pub fn test_child(ep: Endpoint) -> Result<()> {
     // task.tcb.tcb_set_affinity(0).unwrap();
     task.tcb.debug_name(b"before name");
 
+    let mut task_map = TASK_MAP.lock();
+    let task_badge = task_map.len();
     task.tcb.tcb_resume().unwrap();
 
+    task_map.insert(task_badge as u64, task);
     loop {
-        if task.exit.is_some() {
-            break;
-        }
-        let (message, _badge) = ep.recv(());
+        let (message, badge) = ep.recv(());
+
+        let mut task = task_map.get_mut(&badge).unwrap();
 
         if message.label() < 8 {
             let fault = with_ipc_buffer(|buffer| Fault::new(&buffer, &message));
@@ -132,7 +138,7 @@ pub fn test_child(ep: Endpoint) -> Result<()> {
                         let args: [Word; 6] = msgs[1..7].try_into().unwrap();
                         (msgs[0] as _, args.map(|x| x as usize))
                     });
-                    let res = handle_ipc_call(&mut task, sys_id, args)
+                    let res = handle_ipc_call(&mut task, sys_id, args, ep)
                         .map_err(|e| -e.into_raw() as isize)
                         .unwrap_or_else(|e| e as usize);
                     reply_with(&[res]);
@@ -150,7 +156,6 @@ pub fn test_child(ep: Endpoint) -> Result<()> {
         r#yield();
     }
 
-    task.tcb.tcb_suspend().unwrap();
     // TODO: Free memory from slots.
     Ok(())
 }

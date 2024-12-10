@@ -1,4 +1,4 @@
-use sel4::debug_println;
+use sel4::{cap::Endpoint, debug_println};
 use syscalls::{Errno, Sysno};
 mod fs;
 mod mm;
@@ -12,6 +12,7 @@ pub fn handle_ipc_call(
     task: &mut Sel4Task,
     sys_id: usize,
     args: [usize; 6],
+    fault_ep: Endpoint,
 ) -> Result<usize, Errno> {
     let sys_no = Sysno::new(sys_id).ok_or(Errno::EINVAL)?;
     debug_println!("[KernelThread] Syscall: {:?}", sys_no);
@@ -31,7 +32,7 @@ pub fn handle_ipc_call(
         Sysno::exit => thread::sys_exit(task, args[0] as _),
         Sysno::exit_group => thread::sys_exit_group(task, args[0] as _),
         Sysno::getpid => thread::sys_getpid(task),
-        Sysno::execve => thread::sys_exec(task, args[0] as _, args[1] as _, args[2] as _),
+        Sysno::execve => thread::sys_exec(task, fault_ep, args[0] as _, args[1] as _, args[2] as _),
 
         Sysno::getppid => thread::sys_getppid(task),
         Sysno::set_tid_address => thread::sys_set_tid_address(task, args[0] as _),

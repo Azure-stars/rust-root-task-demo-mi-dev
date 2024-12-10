@@ -19,3 +19,5 @@ sel4-runtime-common = { git = "https://github.com/seL4/rust-sel4", rev = "1cd063
 ] }
 sel4-dlmalloc = { git = "https://github.com/seL4/rust-sel4", rev = "1cd063a" }
 sel4-sync = { git = "https://github.com/seL4/rust-sel4", rev = "1cd063a" }
+
+crate-consts = { path = "../crate-consts" }

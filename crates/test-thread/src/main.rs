@@ -9,6 +9,7 @@ sel4_panicking_env::register_debug_put_char!(sel4::sys::seL4_DebugPutChar);
 use core::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 
 use common::{CustomMessageLabel, LibcSocketAddr};
+use crate_consts::DEFAULT_THREAD_FAULT_EP;
 use sel4::{
     cap::Endpoint, debug_println, set_ipc_buffer, with_ipc_buffer_mut, Cap,
     CapTypeForFrameObjectOfFixedSize, MessageInfo,
@@ -115,7 +116,7 @@ static GLOBAL_ALLOCATOR: StaticDlmallocGlobalAlloc<
 > = StaticDlmallocGlobalAlloc::new(PanickingRawMutex::new(), &STATIC_HEAP);
 
 /// The main entry of the shim component
-fn main(ep: Endpoint, busybox_entry: usize, vsyscall_section: usize) -> usize {
+fn main(_ep: Endpoint, busybox_entry: usize, vsyscall_section: usize) -> usize {
     // Display Debug information
     debug_println!("[User] busybox entry: {:#x}", busybox_entry);
     debug_println!(
@@ -125,7 +126,7 @@ fn main(ep: Endpoint, busybox_entry: usize, vsyscall_section: usize) -> usize {
     );
 
     set_ipc_buffer_with_symbol();
-
+    let ep = Endpoint::from_bits(DEFAULT_THREAD_FAULT_EP);
     // Store Tls reg and endpoint cptr
     TP_REG.store(load_tp_reg(), Ordering::SeqCst);
     EP_CPTR.store(ep.bits(), Ordering::SeqCst);
@@ -164,110 +165,113 @@ fn main(ep: Endpoint, busybox_entry: usize, vsyscall_section: usize) -> usize {
         0,
         0,
     );
-    let socket_id = vsyscall_handler(Sysno::socket.id() as usize, 0, 0, 0, 0, 0, 0);
 
-    let mut socket_addr = LibcSocketAddr {
-        sa_family: 2,
-        sa_data: [0; 14],
-    };
-    // Address is 0.0.0.0:6379;
-    socket_addr.sa_data[0] = (6379 >> 8) as u8;
-    socket_addr.sa_data[1] = (6379 & 0xff) as u8;
+    let _ = vsyscall_handler(Sysno::execve.id() as usize, 0, 0, 0, 0, 0, 0);
+    unreachable!()
+    // let socket_id = vsyscall_handler(Sysno::socket.id() as usize, 0, 0, 0, 0, 0, 0);
 
-    let _ = vsyscall_handler(
-        Sysno::bind.id() as usize,
-        socket_id,
-        (&socket_addr as *const LibcSocketAddr) as usize,
-        0,
-        0,
-        0,
-        0,
-    );
+    // let mut socket_addr = LibcSocketAddr {
+    //     sa_family: 2,
+    //     sa_data: [0; 14],
+    // };
+    // // Address is 0.0.0.0:6379;
+    // socket_addr.sa_data[0] = (6379 >> 8) as u8;
+    // socket_addr.sa_data[1] = (6379 & 0xff) as u8;
 
-    debug_println!("bind done");
+    // let _ = vsyscall_handler(
+    //     Sysno::bind.id() as usize,
+    //     socket_id,
+    //     (&socket_addr as *const LibcSocketAddr) as usize,
+    //     0,
+    //     0,
+    //     0,
+    //     0,
+    // );
 
-    let _ = vsyscall_handler(Sysno::listen.id() as usize, socket_id, 0, 0, 0, 0, 0);
+    // debug_println!("bind done");
 
-    debug_println!("listen done");
-    loop {
-        fn http_server(socket_id: usize) {
-            debug_println!("Run a new connection");
-            const CONTENT: &str = r#"<html>
-    <head>
-      <title>Hello, ArceOS</title>
-    </head>
-    <body>
-      <center>
-        <h1>Hello, <a href="https://github.com/rcore-os/arceos">ArceOS</a></h1>
-      </center>
-      <hr>
-      <center>
-        <i>Powered by <a href="https://github.com/rcore-os/arceos/tree/main/apps/net/httpserver">ArceOS example HTTP server</a> v0.1.0</i>
-      </center>
-    </body>
-    </html>
-    "#;
+    // let _ = vsyscall_handler(Sysno::listen.id() as usize, socket_id, 0, 0, 0, 0, 0);
 
-            macro_rules! header {
-                () => {
-                    "\
-    HTTP/1.1 200 OK\r\n\
-    Content-Type: text/html\r\n\
-    Content-Length: {}\r\n\
-    Connection: close\r\n\
-    \r\n\
-    {}"
-                };
-            }
+    // debug_println!("listen done");
+    // loop {
+    //     fn http_server(socket_id: usize) {
+    //         debug_println!("Run a new connection");
+    //         const CONTENT: &str = r#"<html>
+    // <head>
+    //   <title>Hello, ArceOS</title>
+    // </head>
+    // <body>
+    //   <center>
+    //     <h1>Hello, <a href="https://github.com/rcore-os/arceos">ArceOS</a></h1>
+    //   </center>
+    //   <hr>
+    //   <center>
+    //     <i>Powered by <a href="https://github.com/rcore-os/arceos/tree/main/apps/net/httpserver">ArceOS example HTTP server</a> v0.1.0</i>
+    //   </center>
+    // </body>
+    // </html>
+    // "#;
 
-            let mut requeset = [0u8; 256];
-            let cnt = vsyscall_handler(
-                Sysno::recvfrom.id() as usize,
-                socket_id,
-                (&mut requeset as *mut [u8; 256]) as usize,
-                256,
-                0,
-                0,
-                0,
-            );
-            // let cnt = stream.recv(&mut requeset).unwrap();
-            debug_println!("[Net thread] Request size: {} buf: {:?}", cnt, requeset);
-            let response_buf = format!(header!(), CONTENT.len(), CONTENT);
-            // stream.send(response_buf.as_bytes()).unwrap();
-            vsyscall_handler(
-                Sysno::sendto.id() as usize,
-                socket_id,
-                response_buf.as_ptr() as usize,
-                response_buf.len(),
-                0,
-                0,
-                0,
-            );
-            debug_println!(
-                "[Net thread] Send size: {} buf: {:?}",
-                response_buf.len(),
-                response_buf
-            );
-        }
-        let mut new_socket_address = LibcSocketAddr {
-            sa_family: 2,
-            sa_data: [0; 14],
-        };
-        let new_socket_id = vsyscall_handler(
-            Sysno::accept.id() as usize,
-            socket_id,
-            (&mut new_socket_address as *mut LibcSocketAddr) as usize,
-            0,
-            0,
-            0,
-            0,
-        );
+    //         macro_rules! header {
+    //             () => {
+    //                 "\
+    // HTTP/1.1 200 OK\r\n\
+    // Content-Type: text/html\r\n\
+    // Content-Length: {}\r\n\
+    // Connection: close\r\n\
+    // \r\n\
+    // {}"
+    //             };
+    //         }
 
-        debug_println!("accept done: {}", new_socket_id);
-        if new_socket_id as isize > 0 {
-            http_server(new_socket_id);
-        }
-    }
+    //         let mut requeset = [0u8; 256];
+    //         let cnt = vsyscall_handler(
+    //             Sysno::recvfrom.id() as usize,
+    //             socket_id,
+    //             (&mut requeset as *mut [u8; 256]) as usize,
+    //             256,
+    //             0,
+    //             0,
+    //             0,
+    //         );
+    //         // let cnt = stream.recv(&mut requeset).unwrap();
+    //         debug_println!("[Net thread] Request size: {} buf: {:?}", cnt, requeset);
+    //         let response_buf = format!(header!(), CONTENT.len(), CONTENT);
+    //         // stream.send(response_buf.as_bytes()).unwrap();
+    //         vsyscall_handler(
+    //             Sysno::sendto.id() as usize,
+    //             socket_id,
+    //             response_buf.as_ptr() as usize,
+    //             response_buf.len(),
+    //             0,
+    //             0,
+    //             0,
+    //         );
+    //         debug_println!(
+    //             "[Net thread] Send size: {} buf: {:?}",
+    //             response_buf.len(),
+    //             response_buf
+    //         );
+    //     }
+    //     let mut new_socket_address = LibcSocketAddr {
+    //         sa_family: 2,
+    //         sa_data: [0; 14],
+    //     };
+    //     let new_socket_id = vsyscall_handler(
+    //         Sysno::accept.id() as usize,
+    //         socket_id,
+    //         (&mut new_socket_address as *mut LibcSocketAddr) as usize,
+    //         0,
+    //         0,
+    //         0,
+    //         0,
+    //     );
+
+    //     debug_println!("accept done: {}", new_socket_id);
+    //     if new_socket_id as isize > 0 {
+    //         http_server(new_socket_id);
+    //     }
+    // }
 
     // // Return the true entry point
     // return busybox_entry;

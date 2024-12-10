@@ -1426,9 +1426,15 @@ name = "shim"
 version = "0.1.0"
 dependencies = [
  "common",
+ "crate-consts",
+ "log",
  "sel4",
+ "sel4-dlmalloc",
  "sel4-panicking",
  "sel4-panicking-env",
+ "sel4-runtime-common",
+ "sel4-sync",
+ "syscalls",
 ]
 
 [[package]]
@@ -1524,6 +1530,7 @@ name = "test-thread"
 version = "0.1.0"
 dependencies = [
  "common",
+ "crate-consts",
  "log",
  "sel4",
  "sel4-dlmalloc",

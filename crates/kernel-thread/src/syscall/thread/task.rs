@@ -2,7 +2,7 @@ use core::{cmp, ops::DerefMut};
 
 use common::{footprint, map_image, USPACE_STACK_SIZE, USPACE_STACK_TOP};
 use object::File;
-use sel4::{cap_type, debug_println, init_thread, CNodeCapData, CapRights};
+use sel4::{cap::Endpoint, cap_type, debug_println, init_thread, CNodeCapData};
 use xmas_elf::ElfFile;
 
 use crate::{syscall::SysResult, task::Sel4Task, utils::init_free_page_addr, OBJ_ALLOCATOR};
@@ -73,66 +73,47 @@ bitflags::bitflags! {
     }
 }
 
-const CHILD_ELF: &[u8] = include_bytes!("../../../../../build/test-thread.elf");
+const CHILD_ELF: &[u8] = include_bytes!("../../../../../build/shim.elf");
 const BUSYBOX_ELF: &[u8] = include_bytes!("../../../../../busybox");
 
 pub(crate) fn sys_exec(
     task: &mut Sel4Task,
+    fault_ep: Endpoint,
     _path: *const u8,
     _argv: *const u8,
     _envp: *const u8,
 ) -> SysResult {
-    debug_println!("sys_exec");
     let args = &["busybox", "--help"];
-    let mut new_task = Sel4Task::new();
 
-    new_task
-        .cnode
-        .relative_bits_with_depth(1, 12)
-        .copy(
-            &init_thread::slot::CNODE.cap().relative(new_task.tcb),
-            CapRights::all(),
-        )
-        .unwrap();
-    let ep = OBJ_ALLOCATOR
-        .lock()
-        .allocate_and_retyped_fixed_sized::<cap_type::Endpoint>();
-    new_task
-        .cnode
-        .relative_bits_with_depth(ep.cptr().bits(), 12)
-        .copy(
-            &init_thread::slot::CNODE.cap().relative(ep),
-            CapRights::all(),
-        )
-        .unwrap();
     let mut allocator = OBJ_ALLOCATOR.lock();
     let child_image = File::parse(CHILD_ELF).unwrap();
-    let footprint = footprint(&child_image);
+    task.mapped_page.clear();
+    task.mapped_pt.clear();
     map_image(
         allocator.deref_mut(),
-        &mut new_task.mapped_page,
+        &mut task.mapped_page,
         task.vspace,
-        footprint.clone(),
+        footprint(&child_image),
         &child_image,
-        new_task.vspace,
+        init_thread::slot::VSPACE.cap(),
         unsafe { init_free_page_addr() },
     );
-    // new_task.map_elf(BUSYBOX_ELF);
 
+    let busybox_img = File::parse(BUSYBOX_ELF).unwrap();
     map_image(
         allocator.deref_mut(),
-        &mut new_task.mapped_page,
+        &mut task.mapped_page,
         task.vspace,
-        footprint.clone(),
-        &File::parse(BUSYBOX_ELF).unwrap(),
-        new_task.vspace,
+        footprint(&busybox_img),
+        &busybox_img,
+        init_thread::slot::VSPACE.cap(),
         unsafe { init_free_page_addr() },
     );
-
+    drop(allocator);
     let busybox_file = ElfFile::new(BUSYBOX_ELF).expect("can't load busybox file");
     let busybox_root = busybox_file.header.pt2.entry_point();
 
-    let sp_ptr = new_task.map_stack(
+    let sp_ptr = task.map_stack(
         &busybox_file,
         USPACE_STACK_TOP - USPACE_STACK_SIZE,
         USPACE_STACK_TOP,
@@ -148,24 +129,22 @@ pub(crate) fn sys_exec(
         .fold(0, |acc, x| cmp::max(acc, x.address() + x.size()));
 
     let ipc_buffer_addr = (max + 4096 - 1) / 4096 * 4096;
-    debug_println!("ipc_buffer_addr in User: {:#x?}", ipc_buffer_addr);
-    new_task.map_page(ipc_buffer_addr as _, ipc_buffer_cap);
+
+    task.map_page(ipc_buffer_addr as _, ipc_buffer_cap);
 
     // Configure the child task
-    new_task
-        .tcb
+    task.tcb
         .tcb_configure(
-            ep.cptr(),
-            new_task.cnode,
+            fault_ep.cptr(),
+            task.cnode,
             CNodeCapData::new(0, sel4::WORD_SIZE - 12),
-            new_task.vspace,
+            task.vspace,
             ipc_buffer_addr,
             ipc_buffer_cap,
         )
         .unwrap();
 
-    new_task
-        .tcb
+    task.tcb
         .tcb_set_sched_params(init_thread::slot::TCB.cap(), 0, 255)
         .unwrap();
 
@@ -174,7 +153,6 @@ pub(crate) fn sys_exec(
     // Set child task's context
     *user_context.pc_mut() = file.header.pt2.entry_point();
     *user_context.sp_mut() = sp_ptr as _;
-    *user_context.gpr_mut(0) = ep.cptr().bits();
     *user_context.gpr_mut(1) = ipc_buffer_addr;
     *user_context.gpr_mut(2) = busybox_root;
     // Write vsyscall root
@@ -187,15 +165,14 @@ pub(crate) fn sys_exec(
         .find_section_by_name(".tbss")
         .map_or(0, |tls| tls.address());
 
-    new_task
-        .tcb
+    task.tcb
         .tcb_write_all_registers(false, &mut user_context)
         .unwrap();
 
-    new_task.tcb.debug_name(b"before name");
+    task.tcb.debug_name(b"before name");
 
     task.exit = Some(0);
 
-    new_task.tcb.tcb_resume().unwrap();
+    task.tcb.tcb_resume().unwrap();
     Ok(0)
 }

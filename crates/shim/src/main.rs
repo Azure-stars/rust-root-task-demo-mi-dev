@@ -2,49 +2,133 @@
 #![no_main]
 #![feature(naked_functions)]
 
+extern crate alloc;
 extern crate sel4_panicking;
+sel4_panicking_env::register_debug_put_char!(sel4::sys::seL4_DebugPutChar);
+
+use core::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 
 use common::CustomMessageLabel;
-use core::{
-    arch::asm,
-    ptr,
-    sync::atomic::{AtomicU64, AtomicUsize, Ordering},
-};
+use crate_consts::DEFAULT_THREAD_FAULT_EP;
 use sel4::{
-    cap::Endpoint, debug_println, set_ipc_buffer, with_ipc_buffer_mut,
+    cap::Endpoint, debug_println, set_ipc_buffer, with_ipc_buffer_mut, Cap,
     CapTypeForFrameObjectOfFixedSize, MessageInfo,
 };
+use sel4_dlmalloc::{StaticDlmallocGlobalAlloc, StaticHeap};
+use sel4_sync::PanickingRawMutex;
+use syscalls::Sysno;
+
+/// Load current tls register.
+pub(crate) fn load_tp_reg() -> usize {
+    let mut tp: usize;
+    unsafe {
+        core::arch::asm!("mrs {0}, tpidr_el0", out(reg) tp);
+    }
+    tp
+}
+
+/// Save the tls register
+pub(crate) fn set_tp_reg(tp: usize) {
+    unsafe {
+        core::arch::asm!("msr tpidr_el0, {0}", in(reg) tp);
+    }
+}
+/// The entry of the test thread component.
+#[no_mangle]
+#[naked]
+unsafe extern "C" fn _start() -> () {
+    core::arch::asm!(
+        "
+            bl     {main}
+            mov    x1, 0
+            msr    tpidr_el0, x1
+            blr    x0
+            b      .
+        ",
+        main = sym main,
+        options(noreturn)
+    )
+}
 
 const WORD_SIZE: usize = core::mem::size_of::<usize>();
 
+/// vsyscall handler.
+pub fn vsyscall_handler(
+    id: usize,
+    a: usize,
+    b: usize,
+    c: usize,
+    d: usize,
+    e: usize,
+    f: usize,
+) -> usize {
+    let tp = load_tp_reg();
+    // Restore the TLS register used by Shim components.
+    set_tp_reg(TP_REG.load(Ordering::SeqCst));
+
+    // Write syscall registers to ipc buffer.
+    with_ipc_buffer_mut(|buffer| {
+        let msgs: &mut [u64] = buffer.msg_regs_mut();
+        msgs[0] = id as _;
+        msgs[1] = a as _;
+        msgs[2] = b as _;
+        msgs[3] = c as _;
+        msgs[4] = d as _;
+        msgs[5] = e as _;
+        msgs[6] = f as _;
+    });
+    // Load endpoint and send SysCall message.
+    let ep = Cap::from_bits(EP_CPTR.load(Ordering::SeqCst));
+    let message = ep.call(MessageInfo::new(
+        CustomMessageLabel::SysCall.to_label(),
+        0,
+        0,
+        7 * WORD_SIZE,
+    ));
+
+    // Ensure that has one WORD_SIZE contains result.
+    assert_eq!(message.length(), WORD_SIZE);
+
+    // Get the result of the fake syscall
+    let ret = with_ipc_buffer_mut(|buffer| buffer.msg_regs()[0]);
+
+    // Restore The TLS Register used by linux App
+    set_tp_reg(tp);
+
+    ret as usize
+}
+
 /// TLS register of shim component, use it to restore in [vsyscall_handler]
-static TP_REG: AtomicUsize = AtomicUsize::new(0);
+pub(crate) static TP_REG: AtomicUsize = AtomicUsize::new(0);
 /// Endpoint cptr
-static EP_CPTR: AtomicU64 = AtomicU64::new(0);
+pub(crate) static EP_CPTR: AtomicU64 = AtomicU64::new(0);
 
-sel4_panicking_env::register_debug_put_char!(sel4::debug_put_char);
+const STACK_SIZE: usize = 0x18000;
+sel4_runtime_common::declare_stack!(STACK_SIZE);
 
-fn main(ep: Endpoint, busybox_entry: usize, vsyscall_section: usize) -> usize {
-    {
-        debug_println!("[User] busybox entry: {:#x}", busybox_entry);
-        debug_println!(
-            "[User] vyscall section: {:#x} -> {:#x}",
-            vsyscall_section,
-            vsyscall_handler as usize
-        );
-    }
+const HEAP_SIZE: usize = 0x18000;
+static STATIC_HEAP: StaticHeap<HEAP_SIZE> = StaticHeap::new();
+
+#[global_allocator]
+static GLOBAL_ALLOCATOR: StaticDlmallocGlobalAlloc<
+    PanickingRawMutex,
+    &'static StaticHeap<HEAP_SIZE>,
+> = StaticDlmallocGlobalAlloc::new(PanickingRawMutex::new(), &STATIC_HEAP);
+
+/// The main entry of the shim component
+fn main(_ep: Endpoint, busybox_entry: usize, vsyscall_section: usize) -> usize {
+    // Display Debug information
+    debug_println!("[User] busybox entry: {:#x}", busybox_entry);
+    debug_println!(
+        "[User] vsyscall section: {:#x} -> {:#x}",
+        vsyscall_section,
+        vsyscall_handler as usize
+    );
 
     set_ipc_buffer_with_symbol();
-
-    // Initialize vsyscall
-    if vsyscall_section != 0 {
-        unsafe {
-            (vsyscall_section as *mut usize).write_volatile(vsyscall_handler as usize);
-        }
-    }
-
+    let ep = Endpoint::from_bits(DEFAULT_THREAD_FAULT_EP);
     // Store Tls reg and endpoint cptr
-    TP_REG.store(get_tp(), Ordering::SeqCst);
+    TP_REG.store(load_tp_reg(), Ordering::SeqCst);
     EP_CPTR.store(ep.bits(), Ordering::SeqCst);
 
     // Test Send Custom Message
@@ -55,83 +139,48 @@ fn main(ep: Endpoint, busybox_entry: usize, vsyscall_section: usize) -> usize {
         0,
     ));
 
-    debug_println!("[User] send ipc buffer to kernel thread ok");
+    debug_println!("[User] send ipc buffer done");
 
-    // Return the true entry point
-    return busybox_entry;
-}
-
-pub fn vsyscall_handler(
-    syscall_id: usize,
-    arg1: usize,
-    arg2: usize,
-    arg3: usize,
-    arg4: usize,
-    arg5: usize,
-    arg6: usize,
-) -> usize {
-    let tp = get_tp();
-    // Restore the TLS register used by Shim components.
-    set_tp(TP_REG.load(Ordering::SeqCst));
-
-    with_ipc_buffer_mut(|buffer| {
-        let msgs = buffer.msg_regs_mut();
-        msgs[0] = syscall_id as _;
-        msgs[1] = arg1 as _;
-        msgs[2] = arg2 as _;
-        msgs[3] = arg3 as _;
-        msgs[4] = arg4 as _;
-        msgs[5] = arg5 as _;
-        msgs[6] = arg6 as _;
-    });
-
-    let ep = Endpoint::from_bits(EP_CPTR.load(Ordering::SeqCst));
-    let msg = ep.call(MessageInfo::new(
-        CustomMessageLabel::SysCall.to_label(),
+    let mmap_ptr = vsyscall_handler(
+        Sysno::mmap.id() as usize,
+        0x1000,
+        0x1000,
+        0b11,
+        0b10000,
         0,
         0,
-        7 * WORD_SIZE,
-    ));
+    );
 
-    // Ensure that has one WORD_SIZE contains result.
-    assert_eq!(msg.length(), WORD_SIZE);
+    let content = "Hello, World!";
 
-    // Get the result of the fake syscall
-    let ret = with_ipc_buffer_mut(|buffer| buffer.msg_regs()[0]);
-
-    // Restore The TLS Register used by linux App
-    set_tp(tp);
-
-    ret as _
-}
-
-#[no_mangle]
-#[naked]
-unsafe extern "C" fn _start() -> ! {
-    asm!(
-        "
-            bl      {main}
-            mov     x1, 0
-            msr     tpidr_el0, x1
-            blr     x0
-            b       .
-        ",
-        main = sym main,
-        options(noreturn)
-    )
-}
-
-fn get_tp() -> usize {
-    let mut tp: usize;
     unsafe {
-        asm!("mrs {}, tpidr_el0", out(reg) tp);
+        core::ptr::copy_nonoverlapping(content.as_ptr(), mmap_ptr as *mut u8, content.len());
     }
-    tp
+    let _ = vsyscall_handler(
+        Sysno::write.id() as usize,
+        1,
+        mmap_ptr as usize,
+        content.len(),
+        0,
+        0,
+        0,
+    );
+
+    let _ = vsyscall_handler(Sysno::exit.id() as usize, 0, 0, 0, 0, 0, 0);
+
+    unreachable!()
+
+    // // Return the true entry point
+    // return busybox_entry;
 }
 
-fn set_tp(tp: usize) {
+/// Send a syscall to sel4 with none arguments
+pub fn sys_null(sys: isize) {
     unsafe {
-        asm!("msr tpidr_el0, {}", in(reg) tp);
+        core::arch::asm!(
+            "svc 0",
+            in("x7") sys,
+        );
     }
 }
 
@@ -140,7 +189,7 @@ fn set_ipc_buffer_with_symbol() {
         static _end: usize;
     }
     let ipc_buffer = unsafe {
-        ((ptr::addr_of!(_end) as usize)
+        ((core::ptr::addr_of!(_end) as usize)
             .next_multiple_of(sel4::cap_type::Granule::FRAME_OBJECT_TYPE.bytes())
             as *mut sel4::IpcBuffer)
             .as_mut()
@@ -148,21 +197,4 @@ fn set_ipc_buffer_with_symbol() {
     };
 
     set_ipc_buffer(ipc_buffer);
-}
-
-/// Send a syscall to sel4 with none arguments
-pub fn syscall0(id: isize) {
-    unsafe {
-        core::arch::asm!(
-            "svc 0",
-            in("x7") id,
-        );
-    }
-}
-
-#[allow(non_snake_case)]
-#[no_mangle]
-pub extern "C" fn _Unwind_Resume() -> ! {
-    debug_println!("[User] Task Error");
-    loop {}
 }
