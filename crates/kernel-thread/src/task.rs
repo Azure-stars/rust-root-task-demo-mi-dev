@@ -5,7 +5,7 @@ use core::{cmp, sync::atomic::AtomicU64};
 use crate_consts::{CNODE_RADIX_BITS, PAGE_SIZE, STACK_ALIGN_SIZE};
 use sel4::{
     cap_type::{CNode, Granule, Tcb, VSpace, PT},
-    init_thread, CapRights, Error, VmAttributes,
+    debug_println, init_thread, CapRights, Error, VmAttributes,
 };
 use xmas_elf::{program, ElfFile};
 

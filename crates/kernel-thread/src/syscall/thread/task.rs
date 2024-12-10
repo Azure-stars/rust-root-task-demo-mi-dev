@@ -4,7 +4,9 @@ use common::{footprint, map_image, USPACE_STACK_SIZE, USPACE_STACK_TOP};
 use crate_consts::{CNODE_RADIX_BITS, DEFAULT_THREAD_FAULT_EP, GRANULE_SIZE};
 use object::File;
 use sel4::{
-    cap::Endpoint, cap_type, debug_println, init_thread, CNodeCapData, Cap, CapRights, VmAttributes,
+    cap::Endpoint,
+    cap_type::{self},
+    debug_println, init_thread, CNodeCapData, Cap, CapRights, VmAttributes,
 };
 use syscalls::Errno;
 use xmas_elf::ElfFile;
@@ -89,7 +91,6 @@ bitflags::bitflags! {
 }
 
 const CHILD_ELF: &[u8] = include_bytes!("../../../../../build/shim.elf");
-const BUSYBOX_ELF: &[u8] = include_bytes!("../../../../../busybox");
 
 pub(crate) fn sys_exec(
     badge: u64,
@@ -102,10 +103,11 @@ pub(crate) fn sys_exec(
     let task = task_map.get_mut(&badge).unwrap();
     let args = &["busybox", "--help"];
 
-    let mut allocator = OBJ_ALLOCATOR.lock();
-    let child_image = File::parse(CHILD_ELF).unwrap();
     task.mapped_page.clear();
     task.mapped_pt.clear();
+
+    let child_image = File::parse(CHILD_ELF).unwrap();
+    let mut allocator = OBJ_ALLOCATOR.lock();
     map_image(
         allocator.deref_mut(),
         &mut task.mapped_page,
@@ -116,22 +118,10 @@ pub(crate) fn sys_exec(
         unsafe { init_free_page_addr() },
     );
 
-    let busybox_img = File::parse(BUSYBOX_ELF).unwrap();
-    map_image(
-        allocator.deref_mut(),
-        &mut task.mapped_page,
-        task.vspace,
-        footprint(&busybox_img),
-        &busybox_img,
-        init_thread::slot::VSPACE.cap(),
-        unsafe { init_free_page_addr() },
-    );
     drop(allocator);
-    let busybox_file = ElfFile::new(BUSYBOX_ELF).expect("can't load busybox file");
-    let busybox_root = busybox_file.header.pt2.entry_point();
 
     let sp_ptr = task.map_stack(
-        busybox_root as _,
+        0,
         USPACE_STACK_TOP - USPACE_STACK_SIZE,
         USPACE_STACK_TOP,
         args,
@@ -171,12 +161,6 @@ pub(crate) fn sys_exec(
     *user_context.pc_mut() = file.header.pt2.entry_point();
     *user_context.sp_mut() = sp_ptr as _;
     *user_context.gpr_mut(1) = ipc_buffer_addr;
-    *user_context.gpr_mut(2) = busybox_root;
-    // Write vsyscall root
-    *user_context.gpr_mut(3) = busybox_file
-        .find_section_by_name(".vsyscall")
-        .map(|x| x.address())
-        .unwrap_or(0);
     // Get TSS section address.
     user_context.inner_mut().tpidr_el0 = file
         .find_section_by_name(".tbss")
@@ -197,7 +181,7 @@ pub(crate) fn sys_exec(
 pub(crate) fn sys_clone(
     badge: u64,
     fault_ep: Endpoint,
-    _flags: u64,
+    flags: i32,
     _user_stack: *const u8,
     _ptid: *mut i32,
     _ctid: *mut i32,
@@ -205,6 +189,8 @@ pub(crate) fn sys_clone(
 ) -> SysResult {
     let mut task_map = TASK_MAP.lock();
     let task = task_map.get_mut(&badge).unwrap();
+    let clone_flags = CloneFlags::from_bits(flags).ok_or(Errno::EINVAL)?;
+
     // Default to clone without any flags
     let mut new_task = Sel4Task::new();
     // Copy tcb to child
@@ -228,9 +214,23 @@ pub(crate) fn sys_clone(
         )
         .map_err(|_| Errno::ENOMEM)?;
 
-    // Copy vspace to child
-    clone_vspace(&mut new_task, &task);
-    debug_println!("Finish clone vspace");
+    if !clone_flags.contains(CloneFlags::CLONE_VM) {
+        // Copy vspace to child
+        clone_vspace(&mut new_task, &task);
+    } else {
+        let (_, _, new_vspace_index) = OBJ_ALLOCATOR.lock().allocate_slot();
+        let new_vspace = Cap::<cap_type::VSpace>::from_bits(new_vspace_index as u64);
+        init_thread::slot::CNODE
+            .cap()
+            .relative(new_vspace)
+            .copy(
+                &init_thread::slot::CNODE.cap().relative(task.vspace),
+                CapRights::all(),
+            )
+            .unwrap();
+
+        new_task.vspace = new_vspace;
+    }
     let ipc_buffer_cap = OBJ_ALLOCATOR
         .lock()
         .allocate_and_retyped_fixed_sized::<cap_type::Granule>();

@@ -6,7 +6,10 @@ extern crate alloc;
 extern crate sel4_panicking;
 sel4_panicking_env::register_debug_put_char!(sel4::sys::seL4_DebugPutChar);
 
-use core::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use core::{
+    ops::Sub,
+    sync::atomic::{AtomicU64, AtomicUsize, Ordering},
+};
 
 use common::{CustomMessageLabel, LibcSocketAddr};
 use crate_consts::DEFAULT_THREAD_FAULT_EP;
@@ -62,6 +65,7 @@ pub fn vsyscall_handler(
     e: usize,
     f: usize,
 ) -> usize {
+    debug_println!("syscall id: {}", id);
     let prev_id = if id == Sysno::clone.id() as _ {
         vsyscall_handler(Sysno::gettid.id() as usize, 0, 0, 0, 0, 0, 0)
     } else {
@@ -108,7 +112,7 @@ pub fn vsyscall_handler(
 
     // Restore The TLS Register used by linux App
     set_tp_reg(tp);
-
+    debug_println!("syscall id: {} ret: {}", id, ret);
     ret as usize
 }
 
@@ -182,10 +186,12 @@ fn main(_ep: Endpoint, busybox_entry: usize, vsyscall_section: usize) -> usize {
     let ret = vsyscall_handler(Sysno::clone.id() as usize, 0, 0, 0, 0, 0, 0);
     if ret != 0 {
         debug_println!("Child task: {} created", ret);
+        vsyscall_handler(Sysno::exit.id() as usize, 0, 0, 0, 0, 0, 0);
     } else {
         debug_println!("Hello world from child task!");
+        vsyscall_handler(Sysno::execve.id() as usize, 0, 0, 0, 0, 0, 0);
     }
-    vsyscall_handler(Sysno::exit.id() as usize, 0, 0, 0, 0, 0, 0);
+
     unreachable!()
     // let socket_id = vsyscall_handler(Sysno::socket.id() as usize, 0, 0, 0, 0, 0, 0);
 
