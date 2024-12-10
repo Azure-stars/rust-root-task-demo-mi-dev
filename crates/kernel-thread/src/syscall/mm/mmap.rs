@@ -2,7 +2,7 @@ use memory_addr::{MemoryAddr, PageIter4K, VirtAddr};
 use sel4::{debug_println, CapRights, CapRightsBuilder};
 use syscalls::Errno;
 
-use crate::{syscall::SysResult, task::Sel4Task, OBJ_ALLOCATOR};
+use crate::{child_test::TASK_MAP, syscall::SysResult, OBJ_ALLOCATOR};
 
 bitflags::bitflags! {
     #[derive(Debug, Clone)]
@@ -57,7 +57,7 @@ bitflags::bitflags! {
 }
 
 pub(crate) fn sys_mmap(
-    task: &mut Sel4Task,
+    badge: u64,
     addr: *mut usize,
     length: usize,
     prot: i32,
@@ -65,6 +65,8 @@ pub(crate) fn sys_mmap(
     _fd: i32,
     _offset: isize,
 ) -> SysResult {
+    let mut task_map = TASK_MAP.lock();
+    let task = task_map.get_mut(&badge).unwrap();
     let map_flags = MmapFlags::from_bits(flags).ok_or(Errno::EINVAL)?;
     let _permission_flags = MmapProt::from_bits(prot).ok_or(Errno::EINVAL)?;
     let start_addr = VirtAddr::from(if map_flags.contains(MmapFlags::MAP_FIXED) {
@@ -90,7 +92,9 @@ pub(crate) fn sys_mmap(
     Ok(start_addr.as_usize())
 }
 
-pub(crate) fn sys_unmap(task: &mut Sel4Task, addr: *mut usize, length: usize) -> SysResult {
+pub(crate) fn sys_unmap(badge: u64, addr: *mut usize, length: usize) -> SysResult {
+    let mut task_map = TASK_MAP.lock();
+    let task = task_map.get_mut(&badge).unwrap();
     let start_addr = VirtAddr::from(addr as usize);
     let end = start_addr + length;
     for vaddr in PageIter4K::new(start_addr.align_down_4k(), end.align_up_4k())

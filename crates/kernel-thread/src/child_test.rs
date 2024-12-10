@@ -1,6 +1,6 @@
 use crate::{
     syscall::handle_ipc_call,
-    task::{Sel4Task, DEFAULT_USER_STACK_SIZE},
+    task::{Sel4Task, DEFAULT_USER_STACK_TOP},
     utils::align_bits,
     OBJ_ALLOCATOR,
 };
@@ -41,7 +41,7 @@ pub fn test_child(ep: Endpoint) -> Result<()> {
         .mint(
             &init_thread::slot::CNODE.cap().relative(ep),
             CapRights::all(),
-            TASK_MAP.lock().len() as u64,
+            task.id as u64,
         )?;
 
     debug_println!("[KernelThread] Child Task Mapping ELF...");
@@ -52,9 +52,9 @@ pub fn test_child(ep: Endpoint) -> Result<()> {
 
     let busybox_entry_point = busybox_file.header.pt2.entry_point();
     let sp_ptr = task.map_stack(
-        &busybox_file,
-        DEFAULT_USER_STACK_SIZE - 16 * PAGE_SIZE,
-        DEFAULT_USER_STACK_SIZE,
+        busybox_entry_point as _,
+        DEFAULT_USER_STACK_TOP - 16 * PAGE_SIZE,
+        DEFAULT_USER_STACK_TOP,
         args,
     );
 
@@ -103,15 +103,13 @@ pub fn test_child(ep: Endpoint) -> Result<()> {
     // task.tcb.tcb_set_affinity(0).unwrap();
     task.tcb.debug_name(b"before name");
 
-    let mut task_map = TASK_MAP.lock();
-    let task_badge = task_map.len();
     task.tcb.tcb_resume().unwrap();
 
-    task_map.insert(task_badge as u64, task);
+    TASK_MAP.lock().insert(task.id as _, task);
+
     loop {
         let (message, badge) = ep.recv(());
-
-        let mut task = task_map.get_mut(&badge).unwrap();
+        debug_println!("Received message from badge: {}", badge);
 
         if message.label() < 8 {
             let fault = with_ipc_buffer(|buffer| Fault::new(&buffer, &message));
@@ -122,10 +120,12 @@ pub fn test_child(ep: Endpoint) -> Result<()> {
                     let page_cap = OBJ_ALLOCATOR
                         .lock()
                         .allocate_and_retyped_fixed_sized::<Granule>();
-
+                    let mut task_map = TASK_MAP.lock();
+                    let task = task_map.get_mut(&badge).unwrap();
                     task.map_page(vaddr, page_cap);
 
                     task.tcb.tcb_resume().unwrap();
+                    drop(task_map);
                 }
                 _ => {}
             }
@@ -138,7 +138,7 @@ pub fn test_child(ep: Endpoint) -> Result<()> {
                         let args: [Word; 6] = msgs[1..7].try_into().unwrap();
                         (msgs[0] as _, args.map(|x| x as usize))
                     });
-                    let res = handle_ipc_call(&mut task, sys_id, args, ep)
+                    let res = handle_ipc_call(badge, sys_id, args, ep)
                         .map_err(|e| -e.into_raw() as isize)
                         .unwrap_or_else(|e| e as usize);
                     reply_with(&[res]);
@@ -162,7 +162,7 @@ pub fn test_child(ep: Endpoint) -> Result<()> {
 
 /// Reply a message with empty message information
 #[inline]
-fn reply_with(regs: &[usize]) {
+pub(crate) fn reply_with(regs: &[usize]) {
     with_ipc_buffer_mut(|buffer| {
         let msg_regs = buffer.msg_regs_mut();
         regs.iter()

@@ -62,6 +62,12 @@ pub fn vsyscall_handler(
     e: usize,
     f: usize,
 ) -> usize {
+    let prev_id = if id == Sysno::clone.id() as _ {
+        vsyscall_handler(Sysno::gettid.id() as usize, 0, 0, 0, 0, 0, 0)
+    } else {
+        0
+    };
+
     let tp = load_tp_reg();
     // Restore the TLS register used by Shim components.
     set_tp_reg(TP_REG.load(Ordering::SeqCst));
@@ -85,6 +91,14 @@ pub fn vsyscall_handler(
         0,
         7 * WORD_SIZE,
     ));
+
+    if prev_id != 0 {
+        set_tp_reg(tp);
+
+        if vsyscall_handler(Sysno::gettid.id() as usize, 0, 0, 0, 0, 0, 0) != prev_id {
+            return 0;
+        }
+    }
 
     // Ensure that has one WORD_SIZE contains result.
     assert_eq!(message.length(), WORD_SIZE);
@@ -165,8 +179,13 @@ fn main(_ep: Endpoint, busybox_entry: usize, vsyscall_section: usize) -> usize {
         0,
         0,
     );
-
-    let _ = vsyscall_handler(Sysno::execve.id() as usize, 0, 0, 0, 0, 0, 0);
+    let ret = vsyscall_handler(Sysno::clone.id() as usize, 0, 0, 0, 0, 0, 0);
+    if ret != 0 {
+        debug_println!("Child task: {} created", ret);
+    } else {
+        debug_println!("Hello world from child task!");
+    }
+    vsyscall_handler(Sysno::exit.id() as usize, 0, 0, 0, 0, 0, 0);
     unreachable!()
     // let socket_id = vsyscall_handler(Sysno::socket.id() as usize, 0, 0, 0, 0, 0, 0);
 

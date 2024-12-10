@@ -5,11 +5,11 @@ use core::{cmp, sync::atomic::AtomicU64};
 use crate_consts::{CNODE_RADIX_BITS, PAGE_SIZE, STACK_ALIGN_SIZE};
 use sel4::{
     cap_type::{CNode, Granule, Tcb, VSpace, PT},
-    debug_println, init_thread, CapRights, Error, VmAttributes,
+    init_thread, CapRights, Error, VmAttributes,
 };
 use xmas_elf::{program, ElfFile};
 
-pub const DEFAULT_USER_STACK_SIZE: usize = 0x1_0000_0000;
+pub const DEFAULT_USER_STACK_TOP: usize = 0x1_0000_0000;
 
 #[derive(PartialEq, Eq, PartialOrd, Ord)]
 #[allow(non_camel_case_types, dead_code)]
@@ -191,19 +191,19 @@ impl Sel4Task {
 
     pub fn map_stack(
         &mut self,
-        file: &ElfFile,
+        entry_point: usize,
         mut start: usize,
         end: usize,
         args: &[&str],
     ) -> usize {
         start = start / PAGE_SIZE * PAGE_SIZE;
-        let mut stack_ptr = DEFAULT_USER_STACK_SIZE;
+        let mut stack_ptr = DEFAULT_USER_STACK_TOP;
 
         for vaddr in (start..end).step_by(PAGE_SIZE) {
             let page_cap = OBJ_ALLOCATOR
                 .lock()
                 .allocate_and_retyped_fixed_sized::<Granule>();
-            if vaddr == DEFAULT_USER_STACK_SIZE - PAGE_SIZE {
+            if vaddr == DEFAULT_USER_STACK_TOP - PAGE_SIZE {
                 page_cap
                     .frame_map(
                         init_thread::slot::VSPACE.cap(),
@@ -244,7 +244,7 @@ impl Sel4Task {
                 let mut auxv = BTreeMap::new();
                 auxv.insert(AuxV::EXECFN, args_ptr[0]);
                 auxv.insert(AuxV::PAGESZ, PAGE_SIZE);
-                auxv.insert(AuxV::ENTRY, file.header.pt2.entry_point() as usize);
+                auxv.insert(AuxV::ENTRY, entry_point);
                 auxv.insert(AuxV::GID, 0);
                 auxv.insert(AuxV::EGID, 0);
                 auxv.insert(AuxV::UID, 0);
@@ -319,13 +319,6 @@ impl Sel4Task {
                                 (page_seat_vaddr() + offset % PAGE_SIZE) as *mut u8,
                                 rsize,
                             )
-                        }
-
-                        unsafe {
-                            if vaddr < 0x1fc40 && vaddr + PAGE_SIZE > 0x1fc40 {
-                                let v = ((page_seat_vaddr() + 0xc40) as *mut u32).read_volatile();
-                                debug_println!("[KernelThread] v: {:#x}", v);
-                            }
                         }
 
                         page_cap.frame_unmap().unwrap();

@@ -5,14 +5,11 @@ use sel4_panicking_env::debug_println;
 use sel4_sys::seL4_DebugPutChar;
 use syscalls::Errno;
 
-use crate::{page_seat_vaddr, syscall::SysResult, task::Sel4Task, utils::align_bits};
+use crate::{child_test::TASK_MAP, page_seat_vaddr, syscall::SysResult, utils::align_bits};
 
-pub(crate) fn sys_write(
-    task: &mut Sel4Task,
-    fd: i32,
-    buf: *const u8,
-    mut count: usize,
-) -> SysResult {
+pub(crate) fn sys_write(badge: u64, fd: i32, buf: *const u8, mut count: usize) -> SysResult {
+    let task_map = TASK_MAP.lock();
+    let task = task_map.get(&badge).unwrap();
     if fd != STDOUT_FD && fd != STDERR_FD {
         return Err(Errno::ENOSYS);
     }

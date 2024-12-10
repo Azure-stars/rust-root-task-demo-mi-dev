@@ -1,31 +1,46 @@
 use core::{cmp, ops::DerefMut};
 
 use common::{footprint, map_image, USPACE_STACK_SIZE, USPACE_STACK_TOP};
+use crate_consts::{CNODE_RADIX_BITS, DEFAULT_THREAD_FAULT_EP, GRANULE_SIZE};
 use object::File;
-use sel4::{cap::Endpoint, cap_type, debug_println, init_thread, CNodeCapData};
+use sel4::{
+    cap::Endpoint, cap_type, debug_println, init_thread, CNodeCapData, Cap, CapRights, VmAttributes,
+};
+use syscalls::Errno;
 use xmas_elf::ElfFile;
 
-use crate::{syscall::SysResult, task::Sel4Task, utils::init_free_page_addr, OBJ_ALLOCATOR};
+use crate::{
+    child_test::TASK_MAP,
+    page_seat_vaddr,
+    syscall::SysResult,
+    task::Sel4Task,
+    utils::{init_free_page_addr, FreePagePlaceHolder},
+    OBJ_ALLOCATOR,
+};
 
-pub(crate) fn sys_getpid(task: &mut Sel4Task) -> SysResult {
-    Ok(task.pid as usize)
+pub(crate) fn sys_getpid(badge: u64) -> SysResult {
+    Ok(TASK_MAP.lock().get(&badge).unwrap().pid as usize)
 }
 
-pub(crate) fn sys_getppid(task: &mut Sel4Task) -> SysResult {
-    Ok(task.pid as usize)
+pub(crate) fn sys_getppid(badge: u64) -> SysResult {
+    Ok(TASK_MAP.lock().get(&badge).unwrap().pid as usize)
 }
 
-pub(crate) fn sys_getuid(task: &mut Sel4Task) -> SysResult {
-    Ok(task.id as usize)
+pub(crate) fn sys_getuid(badge: u64) -> SysResult {
+    Ok(TASK_MAP.lock().get(&badge).unwrap().id as usize)
 }
 
-pub(crate) fn sys_geteuid(task: &mut Sel4Task) -> SysResult {
-    Ok(task.id as usize)
+pub(crate) fn sys_geteuid(badge: u64) -> SysResult {
+    Ok(TASK_MAP.lock().get(&badge).unwrap().id as usize)
 }
 
-pub(crate) fn sys_set_tid_address(task: &mut Sel4Task, tidptr: *mut i32) -> SysResult {
-    task.clear_child_tid = Some(tidptr as usize);
-    Ok(task.id as usize)
+pub(crate) fn sys_gettid(badge: usize) -> SysResult {
+    Ok(badge)
+}
+
+pub(crate) fn sys_set_tid_address(badge: u64, tidptr: *mut i32) -> SysResult {
+    TASK_MAP.lock().get_mut(&badge).unwrap().clear_child_tid = Some(tidptr as usize);
+    Ok(badge as usize)
 }
 
 bitflags::bitflags! {
@@ -77,12 +92,14 @@ const CHILD_ELF: &[u8] = include_bytes!("../../../../../build/shim.elf");
 const BUSYBOX_ELF: &[u8] = include_bytes!("../../../../../busybox");
 
 pub(crate) fn sys_exec(
-    task: &mut Sel4Task,
+    badge: u64,
     fault_ep: Endpoint,
     _path: *const u8,
     _argv: *const u8,
     _envp: *const u8,
 ) -> SysResult {
+    let mut task_map = TASK_MAP.lock();
+    let task = task_map.get_mut(&badge).unwrap();
     let args = &["busybox", "--help"];
 
     let mut allocator = OBJ_ALLOCATOR.lock();
@@ -114,7 +131,7 @@ pub(crate) fn sys_exec(
     let busybox_root = busybox_file.header.pt2.entry_point();
 
     let sp_ptr = task.map_stack(
-        &busybox_file,
+        busybox_root as _,
         USPACE_STACK_TOP - USPACE_STACK_SIZE,
         USPACE_STACK_TOP,
         args,
@@ -175,4 +192,145 @@ pub(crate) fn sys_exec(
 
     task.tcb.tcb_resume().unwrap();
     Ok(0)
+}
+
+pub(crate) fn sys_clone(
+    badge: u64,
+    fault_ep: Endpoint,
+    _flags: u64,
+    _user_stack: *const u8,
+    _ptid: *mut i32,
+    _ctid: *mut i32,
+    _newtls: *mut u8,
+) -> SysResult {
+    let mut task_map = TASK_MAP.lock();
+    let task = task_map.get_mut(&badge).unwrap();
+    // Default to clone without any flags
+    let mut new_task = Sel4Task::new();
+    // Copy tcb to child
+    new_task
+        .cnode
+        .relative_bits_with_depth(1, CNODE_RADIX_BITS)
+        .copy(
+            &init_thread::slot::CNODE.cap().relative(task.tcb),
+            CapRights::all(),
+        )
+        .unwrap();
+    // Copy EndPoint to child
+    let badge = new_task.id as u64;
+    new_task
+        .cnode
+        .relative_bits_with_depth(DEFAULT_THREAD_FAULT_EP, CNODE_RADIX_BITS)
+        .mint(
+            &init_thread::slot::CNODE.cap().relative(fault_ep),
+            CapRights::all(),
+            badge,
+        )
+        .map_err(|_| Errno::ENOMEM)?;
+
+    // Copy vspace to child
+    clone_vspace(&mut new_task, &task);
+    debug_println!("Finish clone vspace");
+    let ipc_buffer_cap = OBJ_ALLOCATOR
+        .lock()
+        .allocate_and_retyped_fixed_sized::<cap_type::Granule>();
+
+    let ipc_buffer_addr = 0x4_0000;
+    new_task.map_page(ipc_buffer_addr as _, ipc_buffer_cap);
+    // Configure the child task
+    new_task
+        .tcb
+        .tcb_configure(
+            fault_ep.cptr(),
+            new_task.cnode,
+            CNodeCapData::new(0, sel4::WORD_SIZE - CNODE_RADIX_BITS),
+            new_task.vspace,
+            ipc_buffer_addr,
+            ipc_buffer_cap,
+        )
+        .map_err(|_| Errno::ENOMEM)?;
+    new_task
+        .tcb
+        .tcb_set_sched_params(init_thread::slot::TCB.cap(), 0, 255)
+        .map_err(|_| Errno::ENOMEM)?;
+
+    let mut regs = task.tcb.tcb_read_all_registers(false).unwrap();
+
+    *regs.pc_mut() += 4;
+    // Set return value to 0 for child
+
+    new_task
+        .tcb
+        .tcb_write_all_registers(false, &mut regs)
+        .unwrap();
+
+    // task.tcb.tcb_set_affinity(0).unwrap();
+    new_task.tcb.debug_name(b"before name");
+
+    new_task.tcb.tcb_resume().unwrap();
+    task_map.insert(badge, new_task);
+
+    debug_println!("Finish clone tcb");
+    Ok(badge as usize)
+}
+
+fn clone_vspace(dst: &mut Sel4Task, src: &Sel4Task) {
+    /// free page placeholder
+    static mut EXT_FREE_PAGE_PLACEHOLDER: FreePagePlaceHolder =
+        FreePagePlaceHolder([0; GRANULE_SIZE]);
+
+    for (vaddr, page_cap) in src.mapped_page.iter() {
+        let new_page_cap = OBJ_ALLOCATOR
+            .lock()
+            .allocate_and_retyped_fixed_sized::<cap_type::Granule>();
+
+        // READ data from src page to new_page
+        new_page_cap
+            .frame_map(
+                init_thread::slot::VSPACE.cap(),
+                core::ptr::addr_of!(EXT_FREE_PAGE_PLACEHOLDER) as _,
+                CapRights::all(),
+                VmAttributes::DEFAULT,
+            )
+            .unwrap();
+
+        let temp_cap = Cap::<sel4::cap_type::SmallPage>::from_bits(0);
+        init_thread::slot::CNODE
+            .cap()
+            .relative(temp_cap)
+            .copy(
+                &init_thread::slot::CNODE.cap().relative(*page_cap),
+                CapRights::all(),
+            )
+            .unwrap();
+
+        temp_cap
+            .frame_map(
+                init_thread::slot::VSPACE.cap(),
+                page_seat_vaddr(),
+                CapRights::all(),
+                VmAttributes::DEFAULT,
+            )
+            .unwrap();
+
+        unsafe {
+            core::ptr::copy(
+                page_seat_vaddr() as *const u8,
+                core::ptr::addr_of!(EXT_FREE_PAGE_PLACEHOLDER) as *mut u8,
+                GRANULE_SIZE,
+            );
+        }
+
+        temp_cap.frame_unmap().unwrap();
+
+        init_thread::slot::CNODE
+            .cap()
+            .relative(temp_cap)
+            .delete()
+            .unwrap();
+
+        new_page_cap.frame_unmap().unwrap();
+
+        dst.map_page(*vaddr, new_page_cap);
+    }
 }

@@ -7,12 +7,14 @@ use memory_addr::{MemoryAddr, VirtAddr, PAGE_SIZE_4K};
 use sel4::{init_thread, Cap, CapRights, VmAttributes};
 use syscalls::Errno;
 
-use crate::{page_seat_vaddr, syscall::SysResult, task::Sel4Task, utils::align_bits};
+use crate::{
+    child_test::TASK_MAP, page_seat_vaddr, syscall::SysResult, task::Sel4Task, utils::align_bits,
+};
 
 use super::ipc::tcp;
 
 fn process_item_list<T: Sized, F>(
-    task: &mut Sel4Task,
+    task: &Sel4Task,
     addr: VirtAddr,
     number: Option<usize>,
     mut f: F,
@@ -68,7 +70,7 @@ where
     buf_addr - addr
 }
 
-fn read_item<T: Sized + Copy + Default>(task: &mut Sel4Task, addr: *const T) -> T {
+fn read_item<T: Sized + Copy + Default>(task: &Sel4Task, addr: *const T) -> T {
     let mut item: T = T::default();
     process_item_list::<T, _>(task, VirtAddr::from_ptr_of(addr), None, |src, _, _| {
         item = unsafe { core::ptr::read_volatile(src.as_ptr() as *const T) }
@@ -76,7 +78,7 @@ fn read_item<T: Sized + Copy + Default>(task: &mut Sel4Task, addr: *const T) -> 
     item
 }
 
-fn write_item<T: Sized + Copy>(task: &mut Sel4Task, addr: *const T, item: &T) {
+fn write_item<T: Sized + Copy>(task: &Sel4Task, addr: *const T, item: &T) {
     process_item_list::<T, _>(
         task,
         VirtAddr::from_ptr_of(addr),
@@ -88,7 +90,7 @@ fn write_item<T: Sized + Copy>(task: &mut Sel4Task, addr: *const T, item: &T) {
 }
 
 fn read_item_list<T: Sized + Copy>(
-    task: &mut Sel4Task,
+    task: &Sel4Task,
     addr: *const T,
     num: Option<usize>,
     buf: &mut [T],
@@ -118,7 +120,7 @@ fn read_item_list<T: Sized + Copy>(
 /// - buf: The buffer to write.
 /// - addr: The address to write to.
 fn write_item_list<T: Sized + Copy>(
-    task: &mut Sel4Task,
+    task: &Sel4Task,
     addr: *mut T,
     num: Option<usize>,
     buf: &[T],
@@ -137,21 +139,18 @@ fn write_item_list<T: Sized + Copy>(
     )
 }
 
-pub fn sys_socket(
-    _task: &mut Sel4Task,
-    _domain: usize,
-    _type: usize,
-    _protocol: usize,
-) -> SysResult {
+pub fn sys_socket(_badge: u64, _domain: usize, _type: usize, _protocol: usize) -> SysResult {
     Ok(tcp::new() as usize)
 }
 
 pub fn sys_bind(
-    task: &mut Sel4Task,
+    badge: u64,
     socket_fd: i32,
     addr: *const LibcSocketAddr,
     _addr_len: u32,
 ) -> SysResult {
+    let task_map = TASK_MAP.lock();
+    let task = task_map.get(&badge).unwrap();
     let addr = read_item(task, addr);
     let socket_id = socket_fd as u64;
     let local_addr: SocketAddr = addr.into();
@@ -163,11 +162,13 @@ pub fn sys_bind(
 }
 
 pub fn sys_connect(
-    task: &mut Sel4Task,
+    badge: u64,
     socket_fd: i32,
     addr: *const LibcSocketAddr,
     _addr_len: u32,
 ) -> SysResult {
+    let task_map = TASK_MAP.lock();
+    let task = task_map.get(&badge).unwrap();
     let addr = read_item(task, addr);
     let socket_id = socket_fd as u64;
     let remote_addr: SocketAddr = addr.into();
@@ -178,7 +179,7 @@ pub fn sys_connect(
     }
 }
 
-pub fn sys_listen(_task: &mut Sel4Task, socket_fd: i32) -> SysResult {
+pub fn sys_listen(_badge: u64, socket_fd: i32) -> SysResult {
     let socket_id = socket_fd as u64;
     match tcp::listen(socket_id) {
         Ok(()) => Ok(0),
@@ -188,11 +189,13 @@ pub fn sys_listen(_task: &mut Sel4Task, socket_fd: i32) -> SysResult {
 }
 
 pub fn sys_accept(
-    task: &mut Sel4Task,
+    badge: u64,
     socket_fd: i32,
     addr: *mut LibcSocketAddr,
     _addr_len: u32,
 ) -> SysResult {
+    let task_map = TASK_MAP.lock();
+    let task = task_map.get(&badge).unwrap();
     fn parse_ipaddr(is_ipv4: bool, addr_low: u64, addr_high: u64, port: u16) -> SocketAddr {
         if is_ipv4 {
             let addr = addr_low.to_be_bytes();
@@ -221,7 +224,7 @@ pub fn sys_accept(
     }
 }
 
-pub fn sys_shutdown(_task: &mut Sel4Task, socket_fd: i32, _how: i32) -> SysResult {
+pub fn sys_shutdown(_badge: u64, socket_fd: i32, _how: i32) -> SysResult {
     let socket_id = socket_fd as u64;
     match tcp::shutdown(socket_id) {
         Ok(()) => Ok(0),
@@ -231,7 +234,7 @@ pub fn sys_shutdown(_task: &mut Sel4Task, socket_fd: i32, _how: i32) -> SysResul
 }
 
 pub fn sys_sendto(
-    task: &mut Sel4Task,
+    badge: u64,
     socket_fd: i32,
     buf: *const u8,
     len: usize,
@@ -239,6 +242,8 @@ pub fn sys_sendto(
     _addr: *const LibcSocketAddr,
     _addr_len: usize,
 ) -> SysResult {
+    let task_map = TASK_MAP.lock();
+    let task = task_map.get(&badge).unwrap();
     let socket_id = socket_fd as u64;
     let _remote_addr: SocketAddr = read_item(task, _addr).into();
     // TODO: copy the capabilities of the user thread and transmit it directly
@@ -252,7 +257,7 @@ pub fn sys_sendto(
 }
 
 pub fn sys_recvfrom(
-    task: &mut Sel4Task,
+    badge: u64,
     socket_fd: i32,
     buf: *mut u8,
     len: usize,
@@ -260,6 +265,8 @@ pub fn sys_recvfrom(
     _addr: *const LibcSocketAddr,
     _addr_len: usize,
 ) -> SysResult {
+    let task_map = TASK_MAP.lock();
+    let task = task_map.get(&badge).unwrap();
     let socket_id = socket_fd as u64;
     let mut recv_buf = Vec::with_capacity(len);
     match tcp::recv(socket_id, recv_buf.as_mut_slice()) {

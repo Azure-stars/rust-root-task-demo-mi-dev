@@ -6,7 +6,6 @@ use object::{
     elf::{PF_R, PF_W, PF_X},
     Object, ObjectSegment, SegmentFlags,
 };
-use sel4::debug_println;
 
 use crate::ObjectAllocator;
 // 计算 elf image 的虚地址空间范围
@@ -87,11 +86,6 @@ pub fn map_image<'a>(
             GRANULE_SIZE,
         );
         let num_pages_spanned_by_segment_data = segment_data_footprint.len() / GRANULE_SIZE;
-        debug_println!(
-            "segment footpint: {:x} - {:x}",
-            segment_footprint.start,
-            footprint.start
-        );
         let segment_page_index_offset = (segment_footprint.start - footprint.start) / GRANULE_SIZE;
 
         for (_, rights) in &mut pages[segment_page_index_offset..][..num_pages_spanned_by_segment] {
