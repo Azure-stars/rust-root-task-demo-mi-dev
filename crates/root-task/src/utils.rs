@@ -6,6 +6,17 @@ use crate::FREE_PAGE_PLACEHOLDER;
 #[repr(C, align(4096))]
 pub struct FreePagePlaceHolder(#[allow(dead_code)] pub [u8; GRANULE_SIZE]);
 
+/// Send a syscall to sel4 with none arguments
+#[allow(dead_code)]
+pub fn sys_null(sys: isize) {
+    unsafe {
+        core::arch::asm!(
+            "svc 0",
+            in("x7") sys,
+        );
+    }
+}
+
 /// unmap 空闲页，返回该页起始地址
 pub unsafe fn init_free_page_addr(bootinfo: &sel4::BootInfo) -> usize {
     let addr = core::ptr::addr_of!(FREE_PAGE_PLACEHOLDER) as usize;

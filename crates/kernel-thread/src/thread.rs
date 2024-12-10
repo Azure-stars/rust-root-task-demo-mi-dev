@@ -12,6 +12,8 @@ use sel4_stack::Stack;
 static SECONDARY_THREAD_STACK: Stack<4096> = Stack::new();
 
 const SECONDARY_THREAD_IPC_BUFFER_ADDR: usize = 0x10_0000_0000;
+
+#[allow(unused)]
 pub fn test_threads() {
     let ntfn = OBJ_ALLOCATOR
         .lock()

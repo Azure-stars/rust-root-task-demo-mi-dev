@@ -35,3 +35,8 @@ sel4-elf-header = { git = "https://github.com/seL4/rust-sel4", rev = "1cd063a" }
 sel4-initialize-tls = { git = "https://github.com/seL4/rust-sel4", rev = "1cd063a" }
 sel4-stack = { git = "https://github.com/seL4/rust-sel4", rev = "1cd063a" }
 sel4-root-task = { git = "https://github.com/seL4/rust-sel4", rev = "1cd063a" }
+bitflags = "2.6"
+memory_addr = "0.3"
+axerrno = "0.1"
+num_enum = { version = "0.7", default-features = false }
+object = { version = "0.36.1", default-features = false, features = ["read"] }

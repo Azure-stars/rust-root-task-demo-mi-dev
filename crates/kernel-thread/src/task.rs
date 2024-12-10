@@ -1,6 +1,7 @@
 use crate::{page_seat_vaddr, OBJ_ALLOCATOR};
 use alloc::{collections::btree_map::BTreeMap, vec::Vec};
-use core::cmp;
+use common::USPACE_BASE;
+use core::{cmp, sync::atomic::AtomicU64};
 use crate_consts::{CNODE_RADIX_BITS, PAGE_SIZE, STACK_ALIGN_SIZE};
 use sel4::{
     cap_type::{CNode, Granule, Tcb, VSpace, PT},
@@ -64,13 +65,21 @@ pub enum AuxV {
 }
 
 pub struct Sel4Task {
+    pub pid: usize,
+    pub id: usize,
     pub tcb: sel4::cap::Tcb,
     pub cnode: sel4::cap::CNode,
     pub vspace: sel4::cap::VSpace,
     pub mapped_pt: Vec<sel4::cap::PT>,
     pub mapped_page: BTreeMap<usize, sel4::cap::SmallPage>,
     pub heap: usize,
-    pub exit: bool,
+    pub exit: Option<i32>,
+    /// The clear thread tid field
+    ///
+    /// See <https://manpages.debian.org/unstable/manpages-dev/set_tid_address.2.en.html#clear_child_tid>
+    ///
+    /// When the thread exits, the kernel clears the word at this address if it is not NULL.
+    pub clear_child_tid: Option<usize>,
 }
 
 impl Drop for Sel4Task {
@@ -96,6 +105,7 @@ impl Drop for Sel4Task {
 
 impl Sel4Task {
     pub fn new() -> Sel4Task {
+        static ID_COUNTER: AtomicU64 = AtomicU64::new(1);
         let vspace = OBJ_ALLOCATOR
             .lock()
             .allocate_and_retyped_fixed_sized::<VSpace>();
@@ -112,14 +122,32 @@ impl Sel4Task {
             .allocate_and_retyped_variable_sized::<CNode>(CNODE_RADIX_BITS);
 
         Sel4Task {
+            id: ID_COUNTER.fetch_add(1, core::sync::atomic::Ordering::SeqCst) as usize,
+            pid: 0,
             tcb,
             cnode,
             vspace,
             mapped_pt: Vec::new(),
             mapped_page: BTreeMap::new(),
             heap: 0x2_0000_0000,
-            exit: false,
+            exit: None,
+            clear_child_tid: None,
         }
+    }
+
+    /// To find a free area in the vspace.
+    ///
+    /// The area starts from `start` and the size is `size`.
+    pub fn find_free_area(&self, start: usize, size: usize) -> Option<usize> {
+        let mut last_addr = USPACE_BASE.max(start);
+        for (vaddr, _page) in &self.mapped_page {
+            if last_addr + size <= *vaddr {
+                return Some(last_addr);
+            }
+            last_addr = *vaddr + PAGE_SIZE;
+        }
+        // TODO: Set the limit of the top of the user space.
+        Some(last_addr)
     }
 
     pub fn map_page(&mut self, vaddr: usize, page: sel4::cap::SmallPage) {
@@ -147,6 +175,17 @@ impl Sel4Task {
                 }
                 _ => res.unwrap(),
             }
+        }
+    }
+
+    pub fn unmap_page(&mut self, vaddr: usize, page: sel4::cap::SmallPage) {
+        assert_eq!(vaddr % PAGE_SIZE, 0);
+        let res = page.frame_unmap();
+        match res {
+            Ok(_) => {
+                self.mapped_page.remove(&vaddr);
+            }
+            _ => res.unwrap(),
         }
     }
 

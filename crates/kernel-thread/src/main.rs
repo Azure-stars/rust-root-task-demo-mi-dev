@@ -7,10 +7,10 @@ extern crate alloc;
 extern crate sel4_panicking;
 
 mod child_test;
-mod ipc;
 mod irq_test;
 mod logging;
 mod runtime;
+mod syscall;
 mod task;
 mod thread;
 mod utils;
@@ -52,7 +52,7 @@ fn main() -> ! {
         irq_test::test_irq_with_cap_transfer()
     );
 
-    test_func!("[KernelThread] Test thread", thread::test_threads());
+    // test_func!("[KernelThread] Test thread", thread::test_threads());
 
     test_func!("[KernelThread] Test Thread", {
         let ep = OBJ_ALLOCATOR

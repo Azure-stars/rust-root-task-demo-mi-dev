@@ -1,5 +1,5 @@
 use crate::{
-    ipc::handle_ipc_call,
+    syscall::handle_ipc_call,
     task::{Sel4Task, DEFAULT_USER_STACK_SIZE},
     utils::align_bits,
     OBJ_ALLOCATOR,
@@ -14,7 +14,7 @@ use sel4::{
 use xmas_elf::ElfFile;
 
 // TODO: Make elf file path dynamically available.
-const CHILD_ELF: &[u8] = include_bytes!("../../../build/shim.elf");
+const CHILD_ELF: &[u8] = include_bytes!("../../../build/test-thread.elf");
 const BUSYBOX_ELF: &[u8] = include_bytes!("../../../busybox");
 
 pub fn test_child(ep: Endpoint) -> Result<()> {
@@ -102,12 +102,10 @@ pub fn test_child(ep: Endpoint) -> Result<()> {
     task.tcb.tcb_resume().unwrap();
 
     loop {
-        if task.exit {
+        if task.exit.is_some() {
             break;
         }
-        debug_println!("[KernelThread] Waiting for Message...");
         let (message, _badge) = ep.recv(());
-        debug_println!("[KernelThread] Received Message: {:#x?}", message);
 
         if message.label() < 8 {
             let fault = with_ipc_buffer(|buffer| Fault::new(&buffer, &message));

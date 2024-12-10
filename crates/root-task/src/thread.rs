@@ -13,6 +13,7 @@ static SECONDARY_THREAD_STACK: Stack<4096> = Stack::new();
 
 static SECONDARY_THREAD_IPC_BUFFER_FRAME: IpcBufferFrame = IpcBufferFrame::new();
 
+#[allow(unused)]
 pub fn test_threads(bootinfo: &sel4::BootInfo) {
     let ntfn = OBJ_ALLOCATOR
         .lock()

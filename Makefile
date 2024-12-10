@@ -37,6 +37,9 @@ qemu_args :=
 qemu_args += -drive file=mount.img,if=none,format=raw,id=x0
 qemu_args += -device virtio-blk-device,drive=x0
 
+qemu_args += -netdev user,id=net0,hostfwd=tcp::6379-:6379
+qemu_args += -device virtio-net-device,netdev=net0
+qemu_args += -object filter-dump,id=net0,netdev=net0,file=packets.pcap
 
 $(app): $(app).intermediate
 
@@ -45,12 +48,20 @@ $(app): $(app).intermediate
 .INTERMDIATE: $(app).intermediate
 $(app).intermediate:
 	SEL4_PREFIX=$(sel4_prefix) \
+	RUSTFLAGS="-Clink-arg=-Tcrates/shim/link.ld" \
 		cargo build \
 			--target $(TARGET) \
 			--target-dir $(abspath $(build_dir)/target) \
 			--artifact-dir $(build_dir) \
 			--release \
-			-p kernel-thread -p blk-thread
+			-p shim	-p test-thread
+	SEL4_PREFIX=$(sel4_prefix) \
+		cargo build \
+			--target $(TARGET) \
+			--target-dir $(abspath $(build_dir)/target) \
+			--artifact-dir $(build_dir) \
+			--release \
+			-p blk-thread -p net-thread -p kernel-thread 
 	cargo build \
 		--target-dir $(build_dir)/target \
 		--artifact-dir $(build_dir) \
@@ -69,7 +80,7 @@ $(image): $(app) $(loader) $(loader_cli)
 qemu_cmd := \
 	qemu-system-aarch64 \
 		$(qemu_args) \
-		-machine virt,virtualization=on -cpu cortex-a57 -m size=1G \
+		-machine virt,virtualization=on -cpu cortex-a57 -smp 2 -m size=1G \
 		-serial mon:stdio \
 		-nographic \
 		-kernel $(image)

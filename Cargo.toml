@@ -16,4 +16,6 @@ members = [
     "crates/common",
     "crates/shim",
     "crates/blk-thread",
+    "crates/net-thread",
+    "crates/test-thread",
 ]

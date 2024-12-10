@@ -1,6 +1,5 @@
-
 [package]
-name = "shim"
+name = "test-thread"
 version = "0.1.0"
 edition = "2021"
 
@@ -8,6 +7,15 @@ edition = "2021"
 
 [dependencies]
 sel4 = { git = "https://github.com/seL4/rust-sel4", rev = "1cd063a" }
+log = "0.4"
+syscalls = { version = "0.6", default-features = false }
 sel4-panicking = { git = "https://github.com/seL4/rust-sel4", rev = "1cd063a" }
 sel4-panicking-env = { git = "https://github.com/seL4/rust-sel4", rev = "1cd063a" }
 common = { path = "../common" }
+sel4-runtime-common = { git = "https://github.com/seL4/rust-sel4", rev = "1cd063a", features = [
+    "start",
+    "tls",
+    "unwinding",
+] }
+sel4-dlmalloc = { git = "https://github.com/seL4/rust-sel4", rev = "1cd063a" }
+sel4-sync = { git = "https://github.com/seL4/rust-sel4", rev = "1cd063a" }

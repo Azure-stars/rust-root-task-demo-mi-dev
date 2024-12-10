@@ -1,0 +1,62 @@
+[package]
+name = "net-thread"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+sel4 = { git = "https://github.com/seL4/rust-sel4", rev = "1cd063a" }
+sel4-sys = { git = "https://github.com/seL4/rust-sel4", rev = "1cd063a" }
+sel4-panicking = { git = "https://github.com/seL4/rust-sel4", rev = "1cd063a", features = [
+    "unwinding",
+    "alloc",
+] }
+sel4-panicking-env = { git = "https://github.com/seL4/rust-sel4", rev = "1cd063a" }
+sel4-logging = { git = "https://github.com/seL4/rust-sel4", rev = "1cd063a" }
+sel4-dlmalloc = { git = "https://github.com/seL4/rust-sel4", rev = "1cd063a" }
+sel4-sync = { git = "https://github.com/seL4/rust-sel4", rev = "1cd063a" }
+sel4-runtime-common = { git = "https://github.com/seL4/rust-sel4", rev = "1cd063a", features = [
+    "start",
+    "tls",
+    "unwinding",
+] }
+
+crate-consts = { path = "../crate-consts" }
+spin = { version = "0.9.8" }
+buddy_system_allocator = "0.10.0"
+log = "0.4"
+common = { path = "../common" }
+lazyinit = "0.2"
+axdriver_virtio = { git = "https://github.com/arceos-org/axdriver_crates.git", tag = "v0.1.0", features = ["net"] }
+axdriver_net = { git = "https://github.com/arceos-org/axdriver_crates.git", tag = "v0.1.0" }
+axerrno = "0.1"
+virtio-drivers = "0.7.4"
+memory_addr = "0.3"
+
+# Http Server Dependencies
+httparse = { version = "1.8.0", default-features = false }
+sel4-async-single-threaded-executor = { git = "https://github.com/seL4/rust-sel4", rev = "1cd063a" }
+sel4-async-unsync = { git = "https://github.com/seL4/rust-sel4", rev = "1cd063a" }
+sel4-async-network = { git = "https://github.com/seL4/rust-sel4", rev = "1cd063a" }
+sel4-async-block-io-fat = { git = "https://github.com/seL4/rust-sel4", rev = "1cd063a" }
+embedded-io-async = "0.6.1"
+sel4-shared-ring-buffer = { git = "https://github.com/seL4/rust-sel4", rev = "1cd063a" }
+sel4-shared-ring-buffer-block-io = { git = "https://github.com/seL4/rust-sel4", rev = "1cd063a" }
+sel4-shared-ring-buffer-smoltcp = { git = "https://github.com/seL4/rust-sel4", rev = "1cd063a" }
+
+[dependencies.smoltcp]
+git = "https://github.com/rcore-os/smoltcp.git"
+rev = "8bf9a9a"
+default-features = false
+features = [
+  "alloc", "log",   # no std
+  "medium-ethernet",
+  "medium-ip",
+  "proto-ipv4",
+  "proto-ipv6",
+  "socket-raw", "socket-icmp", "socket-udp", "socket-tcp", "socket-dns", "proto-igmp",
+  # "fragmentation-buffer-size-65536", "proto-ipv4-fragmentation",
+  # "reassembly-buffer-size-65536", "reassembly-buffer-count-32",
+  # "assembler-max-segment-count-32",
+]
