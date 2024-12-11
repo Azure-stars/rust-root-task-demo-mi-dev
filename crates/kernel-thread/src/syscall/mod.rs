@@ -5,7 +5,7 @@ mod mm;
 mod net;
 mod thread;
 
-type SysResult = Result<usize, Errno>;
+pub type SysResult = Result<usize, Errno>;
 
 pub fn handle_ipc_call(
     badge: u64,

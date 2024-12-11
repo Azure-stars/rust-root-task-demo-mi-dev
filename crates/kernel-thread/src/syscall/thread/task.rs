@@ -145,7 +145,7 @@ pub(crate) fn sys_clone(
     if clone_args.is_null() {
         return Err(Errno::EINVAL);
     }
-    let clone_args: CloneArgs = read_item(task, clone_args);
+    let clone_args: CloneArgs = read_item(task, clone_args)?;
 
     let clone_flags = CloneFlags::from_bits(clone_args.flags).ok_or(Errno::EINVAL)?;
 

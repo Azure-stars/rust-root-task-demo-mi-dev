@@ -2,8 +2,9 @@ use alloc::format;
 use crate_consts::GRANULE_SIZE;
 use memory_addr::{MemoryAddr, VirtAddr, PAGE_SIZE_4K};
 use sel4::{debug_println, init_thread, Cap, CapRights, VmAttributes};
+use syscalls::Errno;
 
-use crate::{page_seat_vaddr, task::Sel4Task, FREE_PAGE_PLACEHOLDER};
+use crate::{page_seat_vaddr, syscall::SysResult, task::Sel4Task, FREE_PAGE_PLACEHOLDER};
 
 pub fn print_test(title: &str) {
     debug_println!("{:=^60}", format!(" {} BEGIN", title));
@@ -42,13 +43,13 @@ fn process_item_list<T: Sized, F>(
     addr: VirtAddr,
     number: Option<usize>,
     mut f: F,
-) -> usize
+) -> SysResult
 where
     F: FnMut(VirtAddr, usize, usize),
 {
     let mut buf_addr = addr;
     if number.is_none() && core::mem::size_of::<T>() + addr.align_offset_4k() > PAGE_SIZE_4K {
-        panic!("Item size is too large");
+        return Err(Errno::EINVAL);
     }
     let number = number.unwrap_or(1);
     let mut len = core::mem::size_of::<T>() * number;
@@ -88,22 +89,22 @@ where
                 .delete()
                 .unwrap();
         } else {
-            panic!();
+            return Err(Errno::EFAULT);
         }
     }
-    buf_addr - addr
+    Ok(buf_addr - addr)
 }
 
 // TODO: pass the capabilites to the kernel thread
-pub(crate) fn read_item<T: Sized + Copy>(task: &Sel4Task, addr: *const T) -> T {
+pub(crate) fn read_item<T: Sized + Copy>(task: &Sel4Task, addr: *const T) -> Result<T, Errno> {
     let mut item: T = unsafe { core::mem::MaybeUninit::zeroed().assume_init() };
     process_item_list::<T, _>(task, VirtAddr::from_ptr_of(addr), None, |src, _, _| {
         item = unsafe { core::ptr::read_volatile(src.as_ptr() as *const T) }
-    });
-    item
+    })?;
+    Ok(item)
 }
 
-pub(crate) fn write_item<T: Sized + Copy>(task: &Sel4Task, addr: *const T, item: &T) {
+pub(crate) fn write_item<T: Sized + Copy>(task: &Sel4Task, addr: *const T, item: &T) -> SysResult {
     process_item_list::<T, _>(
         task,
         VirtAddr::from_ptr_of(addr),
@@ -111,7 +112,7 @@ pub(crate) fn write_item<T: Sized + Copy>(task: &Sel4Task, addr: *const T, item:
         |dst, _, copy_len| unsafe {
             core::ptr::copy_nonoverlapping(item as *const T, dst.as_mut_ptr() as *mut T, copy_len);
         },
-    );
+    )
 }
 
 pub(crate) fn read_item_list<T: Sized + Copy>(
@@ -119,7 +120,7 @@ pub(crate) fn read_item_list<T: Sized + Copy>(
     addr: *const T,
     num: Option<usize>,
     buf: &mut [T],
-) {
+) -> SysResult {
     process_item_list::<T, _>(
         task,
         VirtAddr::from_ptr_of(addr),
@@ -135,7 +136,7 @@ pub(crate) fn read_item_list<T: Sized + Copy>(
                 );
             }
         },
-    );
+    )
 }
 
 /// Write items to the given address.
@@ -149,7 +150,7 @@ pub(crate) fn write_item_list<T: Sized + Copy>(
     addr: *mut T,
     num: Option<usize>,
     buf: &[T],
-) -> usize {
+) -> SysResult {
     process_item_list::<u8, _>(
         task,
         VirtAddr::from_ptr_of(addr),

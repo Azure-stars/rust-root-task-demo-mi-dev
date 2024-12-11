@@ -25,7 +25,7 @@ pub fn sys_bind(
 ) -> SysResult {
     let task_map = TASK_MAP.lock();
     let task = task_map.get(&badge).unwrap();
-    let addr = read_item(task, addr);
+    let addr = read_item(task, addr)?;
     let socket_id = socket_fd as u64;
     let local_addr: SocketAddr = addr.into();
     match tcp::bind(socket_id, local_addr) {
@@ -43,7 +43,7 @@ pub fn sys_connect(
 ) -> SysResult {
     let task_map = TASK_MAP.lock();
     let task = task_map.get(&badge).unwrap();
-    let addr = read_item(task, addr);
+    let addr = read_item(task, addr)?;
     let socket_id = socket_fd as u64;
     let remote_addr: SocketAddr = addr.into();
     match tcp::connect(socket_id, remote_addr) {
@@ -119,7 +119,7 @@ pub fn sys_sendto(
     let task_map = TASK_MAP.lock();
     let task = task_map.get(&badge).unwrap();
     let socket_id = socket_fd as u64;
-    let _remote_addr: SocketAddr = read_item(task, _addr).into();
+    let _remote_addr: SocketAddr = read_item(task, _addr)?.into();
     // TODO: copy the capabilities of the user thread and transmit it directly
     let mut payload = Vec::with_capacity(len);
     read_item_list(task, buf, Some(len), payload.as_mut_slice());
@@ -144,7 +144,7 @@ pub fn sys_recvfrom(
     let socket_id = socket_fd as u64;
     let mut recv_buf = Vec::with_capacity(len);
     match tcp::recv(socket_id, recv_buf.as_mut_slice()) {
-        Ok(len) => Ok(write_item_list(task, buf, Some(len), recv_buf.as_slice())),
+        Ok(len) => write_item_list(task, buf, Some(len), recv_buf.as_slice()),
         Err(AxError::InvalidInput) | Err(AxError::AddrInUse) => Err(Errno::EINVAL),
         Err(_) => panic!("Unknown Error!"),
     }
