@@ -213,6 +213,7 @@ dependencies = [
 name = "common"
 version = "0.1.0"
 dependencies = [
+ "bitflags 2.6.0",
  "crate-consts",
  "object",
  "sel4",

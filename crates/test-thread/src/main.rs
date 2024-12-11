@@ -6,12 +6,9 @@ extern crate alloc;
 extern crate sel4_panicking;
 sel4_panicking_env::register_debug_put_char!(sel4::sys::seL4_DebugPutChar);
 
-use core::{
-    ops::Sub,
-    sync::atomic::{AtomicU64, AtomicUsize, Ordering},
-};
+use core::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 
-use common::{CustomMessageLabel, LibcSocketAddr};
+use common::{CloneArgs, CustomMessageLabel, LibcSocketAddr};
 use crate_consts::DEFAULT_THREAD_FAULT_EP;
 use sel4::{
     cap::Endpoint, debug_println, set_ipc_buffer, with_ipc_buffer_mut, Cap,
@@ -65,9 +62,27 @@ pub fn vsyscall_handler(
     e: usize,
     f: usize,
 ) -> usize {
+    #[inline(always)]
+    fn get_tid() -> u64 {
+        // Write syscall registers to ipc buffer.
+        with_ipc_buffer_mut(|buffer| {
+            let msgs: &mut [u64] = buffer.msg_regs_mut();
+            msgs[0] = Sysno::gettid.id() as _;
+        });
+        // Load endpoint and send SysCall message.
+        let ep = Cap::from_bits(EP_CPTR.load(Ordering::SeqCst));
+        let _ = ep.call(MessageInfo::new(
+            CustomMessageLabel::SysCall.to_label(),
+            0,
+            0,
+            7 * WORD_SIZE,
+        ));
+        with_ipc_buffer_mut(|buffer| buffer.msg_regs()[0])
+    }
+
     debug_println!("syscall id: {}", id);
     let prev_id = if id == Sysno::clone.id() as _ {
-        vsyscall_handler(Sysno::gettid.id() as usize, 0, 0, 0, 0, 0, 0)
+        get_tid()
     } else {
         0
     };
@@ -98,8 +113,7 @@ pub fn vsyscall_handler(
 
     if prev_id != 0 {
         set_tp_reg(tp);
-
-        if vsyscall_handler(Sysno::gettid.id() as usize, 0, 0, 0, 0, 0, 0) != prev_id {
+        if get_tid() != prev_id {
             return 0;
         }
     }
@@ -183,12 +197,23 @@ fn main(_ep: Endpoint, busybox_entry: usize, vsyscall_section: usize) -> usize {
         0,
         0,
     );
-    let ret = vsyscall_handler(Sysno::clone.id() as usize, 0, 0, 0, 0, 0, 0);
+
+    let clone_args = CloneArgs::default();
+
+    let ret = vsyscall_handler(
+        Sysno::clone.id() as usize,
+        (&clone_args) as *const _ as usize,
+        0,
+        0,
+        0,
+        0,
+        0,
+    );
     if ret != 0 {
         debug_println!("Child task: {} created", ret);
         vsyscall_handler(Sysno::exit.id() as usize, 0, 0, 0, 0, 0, 0);
     } else {
-        debug_println!("Hello world from child task!");
+        debug_println!("Hello, I am the child task");
         vsyscall_handler(Sysno::execve.id() as usize, 0, 0, 0, 0, 0, 0);
     }
 

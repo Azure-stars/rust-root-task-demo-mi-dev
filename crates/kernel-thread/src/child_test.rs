@@ -1,11 +1,6 @@
-use crate::{
-    syscall::handle_ipc_call,
-    task::{Sel4Task, DEFAULT_USER_STACK_TOP},
-    utils::align_bits,
-    OBJ_ALLOCATOR,
-};
+use crate::{syscall::handle_ipc_call, task::Sel4Task, utils::align_bits, OBJ_ALLOCATOR};
 use alloc::collections::btree_map::BTreeMap;
-use common::CustomMessageLabel;
+use common::{CustomMessageLabel, USPACE_STACK_TOP};
 use core::cmp;
 use crate_consts::{CNODE_RADIX_BITS, DEFAULT_THREAD_FAULT_EP, PAGE_SIZE, PAGE_SIZE_BITS};
 use sel4::{
@@ -17,7 +12,6 @@ use xmas_elf::ElfFile;
 
 // TODO: Make elf file path dynamically available.
 const CHILD_ELF: &[u8] = include_bytes!("../../../build/test-thread.elf");
-const BUSYBOX_ELF: &[u8] = include_bytes!("../../../busybox");
 
 pub static TASK_MAP: Mutex<BTreeMap<u64, Sel4Task>> = Mutex::new(BTreeMap::new());
 
@@ -46,17 +40,9 @@ pub fn test_child(ep: Endpoint) -> Result<()> {
 
     debug_println!("[KernelThread] Child Task Mapping ELF...");
     task.load_elf(CHILD_ELF);
-    task.load_elf(BUSYBOX_ELF);
     let child_elf_file = ElfFile::new(CHILD_ELF).expect("[KernelThread] can't load elf file");
-    let busybox_file = ElfFile::new(BUSYBOX_ELF).expect("[KernelThread] can't load busybox file");
 
-    let busybox_entry_point = busybox_file.header.pt2.entry_point();
-    let sp_ptr = task.map_stack(
-        busybox_entry_point as _,
-        DEFAULT_USER_STACK_TOP - 16 * PAGE_SIZE,
-        DEFAULT_USER_STACK_TOP,
-        args,
-    );
+    let sp_ptr = task.map_stack(0, USPACE_STACK_TOP - 16 * PAGE_SIZE, USPACE_STACK_TOP, args);
 
     let ipc_buffer_cap = OBJ_ALLOCATOR
         .lock()
@@ -85,12 +71,6 @@ pub fn test_child(ep: Endpoint) -> Result<()> {
     *user_context.pc_mut() = child_elf_file.header.pt2.entry_point();
     *user_context.sp_mut() = sp_ptr as _;
     *user_context.gpr_mut(0) = ep.cptr().bits();
-    *user_context.gpr_mut(1) = busybox_entry_point;
-    // Write vsyscall section address to gpr2
-    *user_context.gpr_mut(2) = busybox_file
-        .find_section_by_name(".vsyscall")
-        .map(|x| x.address())
-        .unwrap_or(0);
     // Get TSS section address.
     user_context.inner_mut().tpidr_el0 = child_elf_file
         .find_section_by_name(".tbss")
@@ -109,7 +89,6 @@ pub fn test_child(ep: Endpoint) -> Result<()> {
 
     loop {
         let (message, badge) = ep.recv(());
-        debug_println!("Received message from badge: {}", badge);
 
         if message.label() < 8 {
             let fault = with_ipc_buffer(|buffer| Fault::new(&buffer, &message));

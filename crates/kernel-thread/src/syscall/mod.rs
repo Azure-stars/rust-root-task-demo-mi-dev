@@ -34,15 +34,7 @@ pub fn handle_ipc_call(
         Sysno::execve => {
             thread::sys_exec(badge, fault_ep, args[0] as _, args[1] as _, args[2] as _)
         }
-        Sysno::clone => thread::sys_clone(
-            badge,
-            fault_ep,
-            args[0] as _,
-            args[1] as _,
-            args[2] as _,
-            args[3] as _,
-            args[4] as _,
-        ),
+        Sysno::clone => thread::sys_clone(badge, fault_ep, args[0] as _, args[1] as _),
         Sysno::gettid => thread::sys_gettid(badge as _),
         Sysno::sched_yield => thread::sys_sched_yield(),
         Sysno::getppid => thread::sys_getppid(badge),

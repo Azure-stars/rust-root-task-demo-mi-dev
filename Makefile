@@ -54,7 +54,7 @@ $(app).intermediate:
 			--target-dir $(abspath $(build_dir)/target) \
 			--artifact-dir $(build_dir) \
 			--release \
-			-p shim	-p test-thread
+			-p shim -p test-thread
 	SEL4_PREFIX=$(sel4_prefix) \
 		cargo build \
 			--target $(TARGET) \
@@ -80,7 +80,7 @@ $(image): $(app) $(loader) $(loader_cli)
 qemu_cmd := \
 	qemu-system-aarch64 \
 		$(qemu_args) \
-		-machine virt,virtualization=on -cpu cortex-a57 -smp 2 -m size=1G \
+		-machine virt,virtualization=on -cpu cortex-a57 -m size=1G \
 		-serial mon:stdio \
 		-nographic \
 		-kernel $(image)

@@ -8,7 +8,7 @@ sel4_panicking_env::register_debug_put_char!(sel4::sys::seL4_DebugPutChar);
 
 use core::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 
-use common::CustomMessageLabel;
+use common::{CloneArgs, CustomMessageLabel};
 use crate_consts::DEFAULT_THREAD_FAULT_EP;
 use sel4::{
     cap::Endpoint, debug_println, set_ipc_buffer, with_ipc_buffer_mut, Cap,
@@ -62,6 +62,31 @@ pub fn vsyscall_handler(
     e: usize,
     f: usize,
 ) -> usize {
+    #[inline(always)]
+    fn get_tid() -> u64 {
+        // Write syscall registers to ipc buffer.
+        with_ipc_buffer_mut(|buffer| {
+            let msgs: &mut [u64] = buffer.msg_regs_mut();
+            msgs[0] = Sysno::gettid.id() as _;
+        });
+        // Load endpoint and send SysCall message.
+        let ep = Cap::from_bits(EP_CPTR.load(Ordering::SeqCst));
+        let _ = ep.call(MessageInfo::new(
+            CustomMessageLabel::SysCall.to_label(),
+            0,
+            0,
+            7 * WORD_SIZE,
+        ));
+        with_ipc_buffer_mut(|buffer| buffer.msg_regs()[0])
+    }
+
+    debug_println!("syscall id: {}", id);
+    let prev_id = if id == Sysno::clone.id() as _ {
+        get_tid()
+    } else {
+        0
+    };
+
     let tp = load_tp_reg();
     // Restore the TLS register used by Shim components.
     set_tp_reg(TP_REG.load(Ordering::SeqCst));
@@ -86,6 +111,13 @@ pub fn vsyscall_handler(
         7 * WORD_SIZE,
     ));
 
+    if prev_id != 0 {
+        set_tp_reg(tp);
+        if get_tid() != prev_id {
+            return 0;
+        }
+    }
+
     // Ensure that has one WORD_SIZE contains result.
     assert_eq!(message.length(), WORD_SIZE);
 
@@ -94,7 +126,7 @@ pub fn vsyscall_handler(
 
     // Restore The TLS Register used by linux App
     set_tp_reg(tp);
-
+    debug_println!("syscall id: {} ret: {}", id, ret);
     ret as usize
 }
 
@@ -115,12 +147,42 @@ static GLOBAL_ALLOCATOR: StaticDlmallocGlobalAlloc<
     &'static StaticHeap<HEAP_SIZE>,
 > = StaticDlmallocGlobalAlloc::new(PanickingRawMutex::new(), &STATIC_HEAP);
 
+const THREAD_STACK_SIZE: usize = 0x1000;
+fn thread_fn() {
+    debug_println!("Hello world from child task!");
+    let mmap_ptr = vsyscall_handler(
+        Sysno::mmap.id() as usize,
+        0x2000,
+        0x1000,
+        0b11,
+        0b10000,
+        0,
+        0,
+    );
+
+    let content = "Hello, World!";
+    unsafe {
+        core::ptr::copy_nonoverlapping(content.as_ptr(), mmap_ptr as *mut u8, content.len());
+    }
+    let _ = vsyscall_handler(
+        Sysno::write.id() as usize,
+        1,
+        mmap_ptr as usize,
+        content.len(),
+        0,
+        0,
+        0,
+    );
+
+    vsyscall_handler(Sysno::exit.id() as usize, 0, 0, 0, 0, 0, 0);
+}
+
 /// The main entry of the shim component
 fn main(_ep: Endpoint, busybox_entry: usize, vsyscall_section: usize) -> usize {
     // Display Debug information
     debug_println!("[User] busybox entry: {:#x}", busybox_entry);
     debug_println!(
-        "[User] vsyscall section: {:#x} -> {:#x}",
+        "[User] vyscall section: {:#x} -> {:#x}",
         vsyscall_section,
         vsyscall_handler as usize
     );
@@ -141,35 +203,37 @@ fn main(_ep: Endpoint, busybox_entry: usize, vsyscall_section: usize) -> usize {
 
     debug_println!("[User] send ipc buffer done");
 
-    let mmap_ptr = vsyscall_handler(
+    let stack_ptr = vsyscall_handler(
         Sysno::mmap.id() as usize,
-        0x1000,
-        0x1000,
+        0x4000,
+        THREAD_STACK_SIZE,
         0b11,
         0b10000,
         0,
         0,
     );
+    let mut clone_args = CloneArgs::default();
+    clone_args.flags = 0x100; // CLONE_VM
+    clone_args.init_fn = thread_fn as _;
+    clone_args.stack = (stack_ptr + THREAD_STACK_SIZE) as _;
 
-    let content = "Hello, World!";
-
-    unsafe {
-        core::ptr::copy_nonoverlapping(content.as_ptr(), mmap_ptr as *mut u8, content.len());
-    }
-    let _ = vsyscall_handler(
-        Sysno::write.id() as usize,
-        1,
-        mmap_ptr as usize,
-        content.len(),
+    let ret = vsyscall_handler(
+        Sysno::clone.id() as usize,
+        (&clone_args) as *const _ as usize,
+        0,
+        0,
         0,
         0,
         0,
     );
-
-    let _ = vsyscall_handler(Sysno::exit.id() as usize, 0, 0, 0, 0, 0, 0);
+    if ret != 0 {
+        debug_println!("Child task: {} created", ret);
+        vsyscall_handler(Sysno::exit.id() as usize, 0, 0, 0, 0, 0, 0);
+    } else {
+        panic!("Clone failed");
+    }
 
     unreachable!()
-
     // // Return the true entry point
     // return busybox_entry;
 }

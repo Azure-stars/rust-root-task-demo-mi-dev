@@ -5,11 +5,9 @@ use core::{cmp, sync::atomic::AtomicU64};
 use crate_consts::{CNODE_RADIX_BITS, PAGE_SIZE, STACK_ALIGN_SIZE};
 use sel4::{
     cap_type::{CNode, Granule, Tcb, VSpace, PT},
-    debug_println, init_thread, CapRights, Error, VmAttributes,
+    init_thread, CapRights, Error, VmAttributes,
 };
 use xmas_elf::{program, ElfFile};
-
-pub const DEFAULT_USER_STACK_TOP: usize = 0x1_0000_0000;
 
 #[derive(PartialEq, Eq, PartialOrd, Ord)]
 #[allow(non_camel_case_types, dead_code)]
@@ -192,18 +190,19 @@ impl Sel4Task {
     pub fn map_stack(
         &mut self,
         entry_point: usize,
-        mut start: usize,
+        start: usize,
         end: usize,
         args: &[&str],
     ) -> usize {
-        start = start / PAGE_SIZE * PAGE_SIZE;
-        let mut stack_ptr = DEFAULT_USER_STACK_TOP;
+        assert!(end % 0x1000 == 0);
+        assert!(start % 0x1000 == 0);
+        let mut stack_ptr = end;
 
         for vaddr in (start..end).step_by(PAGE_SIZE) {
             let page_cap = OBJ_ALLOCATOR
                 .lock()
                 .allocate_and_retyped_fixed_sized::<Granule>();
-            if vaddr == DEFAULT_USER_STACK_TOP - PAGE_SIZE {
+            if vaddr == end - PAGE_SIZE {
                 page_cap
                     .frame_map(
                         init_thread::slot::VSPACE.cap(),
