@@ -18,4 +18,5 @@ members = [
     "crates/blk-thread",
     "crates/net-thread",
     "crates/test-thread",
+    "crates/fs-thread",
 ]

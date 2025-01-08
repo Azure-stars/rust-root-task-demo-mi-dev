@@ -1,0 +1,46 @@
+[package]
+name = "fs-thread"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+sel4 = { git = "https://github.com/seL4/rust-sel4", rev = "1cd063a" }
+sel4-sys = { git = "https://github.com/seL4/rust-sel4", rev = "1cd063a" }
+sel4-panicking = { git = "https://github.com/seL4/rust-sel4", rev = "1cd063a", features = [
+    "unwinding",
+    "alloc",
+] }
+sel4-panicking-env = { git = "https://github.com/seL4/rust-sel4", rev = "1cd063a" }
+sel4-logging = { git = "https://github.com/seL4/rust-sel4", rev = "1cd063a" }
+sel4-dlmalloc = { git = "https://github.com/seL4/rust-sel4", rev = "1cd063a" }
+sel4-sync = { git = "https://github.com/seL4/rust-sel4", rev = "1cd063a" }
+sel4-runtime-common = { git = "https://github.com/seL4/rust-sel4", rev = "1cd063a", features = [
+    "start",
+    "tls",
+    "unwinding",
+] }
+syscalls = { version = "0.6", default-features = false }
+crate-consts = { path = "../crate-consts" }
+sel4-elf-header = { git = "https://github.com/seL4/rust-sel4", rev = "1cd063a" }
+sel4-initialize-tls = { git = "https://github.com/seL4/rust-sel4", rev = "1cd063a" }
+sel4-stack = { git = "https://github.com/seL4/rust-sel4", rev = "1cd063a" }
+axdriver_block = { git = "https://github.com/arceos-org/axdriver_crates.git", tag = "v0.1.0", features = [
+    "ramdisk",
+], optional = true }
+axdriver_base = { git = "https://github.com/arceos-org/axdriver_crates.git", tag = "v0.1.0" }
+cap_access = "0.1"
+axio = { version = "0.1", features = ["alloc"] }
+axerrno = "0.1"
+axfs_vfs = "0.1"
+lazyinit = "0.2"
+axfs_ramfs = { version = "0.1", optional = true }
+cfg-if = "1.0"
+crate_interface = { version = "0.1", optional = true }
+spin = "0.5"
+
+[features]
+dyn = []
+myfs = ["crate_interface"]
+ramfs = ["dep:axfs_ramfs"]
+block = ["axdriver_block"]
+default = ["block", "ramfs", "myfs"]

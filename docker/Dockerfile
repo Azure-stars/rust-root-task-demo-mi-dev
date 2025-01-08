@@ -95,6 +95,7 @@ COPY kernel-settings-aarch64.cmake .
 RUN set -eux; \
     cd rel4_kernel;\
     git pull; \
+    cargo update -p home --precise 0.5.5; \
     python3 -m venv pyenv; \
     export PATH=$(realpath ./pyenv/bin):$PATH; \
     pip install pyyaml; \

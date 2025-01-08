@@ -61,7 +61,7 @@ $(app).intermediate:
 			--target-dir $(abspath $(build_dir)/target) \
 			--artifact-dir $(build_dir) \
 			--release \
-			-p blk-thread -p net-thread -p kernel-thread 
+			-p blk-thread -p net-thread -p kernel-thread -p fs-thread
 	cargo build \
 		--target-dir $(build_dir)/target \
 		--artifact-dir $(build_dir) \

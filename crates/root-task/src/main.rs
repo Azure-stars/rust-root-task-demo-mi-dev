@@ -38,6 +38,10 @@ static TASK_FILES: &[(&str, &[u8])] = &[
         "net-thread",
         include_bytes_aligned!(16, "../../../build/net-thread.elf"),
     ),
+    (
+        "fs-thread",
+        include_bytes_aligned!(16, "../../../build/fs-thread.elf"),
+    ),
 ];
 
 /// The object allocator for the root task.
